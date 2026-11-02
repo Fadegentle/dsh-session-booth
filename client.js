@@ -523,11 +523,33 @@ window.__ModuleLoader__.load({
             if (!face) continue
             try {
               const s = face.getSnapshot()
+              // Detect per-turn "处理失败" (turn-error): the session snapshot
+              // has no turn-error field, but the binding's eventSource streams
+              // turn/end events whose reason.kind === 'error'. We scan the
+              // event window's latest turn/end to decide whether the last turn
+              // failed. We also clear the sticky error when a new turn starts
+              // (running becomes true), so a later success resets the dot.
+              let turnFailed = false
+              try {
+                const eventSource = pane?.ref?.binding?.eventSource
+                const win = eventSource?.getSnapshot?.()
+                const entries = win?.entries || []
+                for (let i = entries.length - 1; i >= 0; i--) {
+                  const ev = entries[i]?.event
+                  if (!ev) continue
+                  if (ev.type === 'turn/end') {
+                    turnFailed = ev.data?.reason?.kind === 'error'
+                    break
+                  }
+                }
+              } catch {
+                /* eventSource not ready yet */
+              }
               next[id] = {
                 running: s.running,
                 blank: s.blank,
                 promptAttempted: s.promptAttempted,
-                error: !!(s.lastAgentError || s.openError || s.promptError),
+                error: !!(s.lastAgentError || s.openError || s.promptError || (s.running ? false : turnFailed)),
               }
               const prev = statusesRef.current[id]
               if (!prev || prev.running !== next[id].running || prev.blank !== next[id].blank ||
