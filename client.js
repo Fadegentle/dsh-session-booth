@@ -105,11 +105,15 @@ window.__ModuleLoader__.load({
           // The composer (input dialog) renders with DSH's default styling.
           // Our pane gives the flex chain a definite height (height:100% on
           // the content box), so `.body`/`.scrollBody` (flex:1; min-height:0)
-          // fill the pane and the composer (`flex:none`) naturally sits at the
-          // pane bottom — no forced sticky/CSS overrides needed. The
-          // conversation.content factory returns only `.body` (not the
-          // phase-gated `.root`/`.embeddedBody`), so DSH's own gated sticky
-          // rule never fires here; the natural flex layout handles it.
+          // fill the pane. The conversation.content factory returns only
+          // `.body` (not the phase-gated `.root`/`.embeddedBody`), so DSH's
+          // own gated composerSeat sticky rule never fires here. For a BLANK
+          // session there is no `.viewArea` flex-filler, so without a push the
+          // composer (flex:none) would sit at the TOP of the scrollport.
+          // margin-top:auto on the composerSeat is the classic flex trick: it
+          // consumes any leftover vertical space and pins the composer to the
+          // pane bottom for both blank and populated sessions.
+          '[data-conversation-scroll] [data-composer-seat] { margin-top: auto }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
