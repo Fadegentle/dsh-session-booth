@@ -113,7 +113,8 @@ window.__ModuleLoader__.load({
           // margin-top:auto on the composerSeat is the classic flex trick: it
           // consumes any leftover vertical space and pins the composer to the
           // pane bottom for both blank and populated sessions.
-          '[data-conversation-scroll] [data-composer-seat] { margin-top: auto }\n';
+          '[data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
+          '[data-conversation-scroll] .viewArea { flex: 1 0 auto !important; min-height: auto !important }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -525,8 +526,13 @@ window.__ModuleLoader__.load({
         return Math.min(px, 480) // hard cap so it never overflows a pane
       }, [layout.ids, wsBySession, wsDisplay])
 
-      const cols = layout.ids.length > 1 ? 2 : 1
-      const rows = layout.ids.length > 2 ? 2 : 1
+      // Responsive grid: balance columns/rows by session count.
+      // cols = ceil(sqrt(N)), rows = ceil(N/cols). This keeps the grid as
+      // square as possible so removing/adding sessions reflows the panes
+      // instead of overflowing a fixed 2x2 box.
+      const n = layout.ids.length
+      const cols = Math.max(1, Math.ceil(Math.sqrt(n)))
+      const rows = Math.max(1, Math.ceil(n / cols))
 
       // Empty state (no panes yet): show a centered "add sessions" affordance.
       if (layout.ids.length === 0) {
@@ -669,56 +675,54 @@ window.__ModuleLoader__.load({
       // would duplicate the factory's scrolling, causing jitter and clipping.
       return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' } },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 8px 4px', flexShrink: 0 } },
-          // Top-left title pill. Left = workspace name (click → jump). Right =
-          // "> session" on a gray background (click → workspace switcher).
+          // Top-left title as plain DSH-style breadcrumbs (matches the normal
+          // DSH ConversationSessionHeader): workspace crumb / session crumb,
+          // transparent background, no border box, no shadow.
           h('div', {
             style: {
-              display: 'flex', alignItems: 'center', width: 'auto', maxWidth: pillWidth, height: 26, minWidth: 0,
-              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
-              borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-              position: 'relative',
+              display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
+              height: 26, position: 'relative',
             },
           },
-            // Left: workspace name — FULLY visible (never truncated). Click
-            // jumps to this session.
+            // Workspace name crumb (tertiary color). Click jumps to this session.
             h('button', {
               onClick: onJump,
               title: t('split.jump'),
               style: {
-                display: 'flex', alignItems: 'center', flexShrink: 0, minWidth: 0,
-                height: '100%', padding: '0 10px', border: 'none', background: 'transparent',
-                color: 'var(--dsh-fg, #eee)', fontSize: 12, fontWeight: 600, opacity: 0.9,
-                cursor: 'pointer', userSelect: 'none',
+                display: 'inline-block', maxWidth: 220,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                color: 'var(--dsw-alias-label-tertiary, #999)',
+                background: 'transparent', border: 'none', cursor: 'pointer',
+                padding: '4px 8px', fontSize: 14, lineHeight: '20px',
+                borderRadius: 'var(--dsw-radius-md, 6px)', flexShrink: 0,
               },
             },
-              h('span', {
-                style: {
-                  whiteSpace: 'nowrap',
-                },
-              }, wsTitle || title || t('split.panelLabel')),
+              h('span', { style: { whiteSpace: 'nowrap' } }, wsTitle || title || t('split.panelLabel')),
             ),
-            // Right: session name as a breadcrumb-style label (matches the
-            // normal DSH header's `.crumb` — no chip background, no border).
-            // Click opens the workspace switcher.
+            // Separator (caption color).
+            h('span', {
+              style: {
+                color: 'var(--dsw-alias-label-caption, #777)', fontSize: 14, lineHeight: '20px',
+              },
+            }, '/'),
+            // Session name crumb (primary color, weight 500). Click opens switcher.
             hasSessionPart
               ? h('button', {
                 onClick: (e) => { e.stopPropagation(); setSwitchOpen(v => !v) },
                 title: t('split.switchSession'),
                 style: {
-                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                  height: '100%', padding: '4px 8px', border: 'none', cursor: 'pointer',
-                  background: 'transparent', color: 'var(--dsh-fg, #eee)',
-                  fontSize: 13, opacity: 0.9, borderRadius: 6,
+                  display: 'inline-block', maxWidth: 220,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  color: 'var(--dsw-alias-label-primary, #eee)',
+                  background: 'transparent', border: 'none', cursor: 'pointer',
+                  padding: '4px 8px', fontSize: 14, lineHeight: '20px',
+                  fontWeight: 500, borderRadius: 'var(--dsw-radius-md, 6px)', flexShrink: 0,
                 },
               },
-                h('span', {
-                  style: {
-                    whiteSpace: 'nowrap', fontWeight: 500,
-                  },
-                }, title || ''),
+                h('span', { style: { whiteSpace: 'nowrap', fontWeight: 500 } }, title || ''),
               )
               : null,
-            // Workspace-switcher dropdown (anchored under the pill).
+            // Workspace-switcher dropdown (anchored under the crumbs).
             switchOpen && workspace
               ? h('div', {
                 style: {
