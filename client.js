@@ -359,6 +359,12 @@ window.__ModuleLoader__.load({
 
       const [picker, setPicker] = useState(null) // {mode:'initial'|'add', exclude:Set}
       const [paneRefs, setPaneRefs] = useState({}) // id -> {ref}
+      // Lazy-mount: panes are heavy (each mounts a full ConversationContent
+      // with a Lexical composer editor). Mounting N at once blocks the first
+      // paint. We mount the FIRST pane immediately, then advance one pane per
+      // animation frame until every pane is mounted, so the initial paint is
+      // fast and the remaining editors initialize across subsequent frames.
+      const [mounted, setMounted] = useState(() => new Set())
 
       // First visit (no persisted layout): open the multi-select picker so the
       // user chooses the sessions for the split view.
@@ -391,6 +397,37 @@ window.__ModuleLoader__.load({
           }
           return next
         })
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [layout.ids.join(',')])
+
+      // Stagger mounts: start with the first id, then add one more id per
+      // animation frame until all layout ids are mounted. This prevents the
+      // N concurrent heavy conversation mounts from blocking the first paint.
+      useEffect(() => {
+        const ids = layout.ids
+        if (ids.length === 0) { setMounted(new Set()); return }
+        // Ensure the first id is mounted right away.
+        setMounted(prev => {
+          if (prev.has(ids[0]) || ids.length === 0) return prev
+          const next = new Set(prev)
+          next.add(ids[0])
+          return next
+        })
+        // Then advance one per frame until all are mounted.
+        let raf = 0
+        const step = () => {
+          setMounted(prev => {
+            if (prev.size >= ids.length) return prev
+            const next = new Set(prev)
+            for (const id of ids) {
+              if (!next.has(id)) { next.add(id); break }
+            }
+            return next
+          })
+          raf = requestAnimationFrame(step)
+        }
+        raf = requestAnimationFrame(step)
+        return () => { cancelAnimationFrame(raf) }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [layout.ids.join(',')])
 
@@ -603,6 +640,7 @@ window.__ModuleLoader__.load({
           onSwitch: (sessionId) => uiWorkspace.openSession(sessionId),
           t,
           SessionProvider,
+          mounted: mounted.has(id),
           empty: t('split.pickerEmpty'),
         })),
         picker && (createPortal
@@ -665,11 +703,11 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty }) {
+    const GridItem = React.memo(function GridItem({ id, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted }) {
       return h('div', {
         style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0 },
       },
-        pane?.ref
+        mounted && pane?.ref
           ? h(SessionProvider, { session: pane.ref },
             h('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' } },
               renderPane(pane.ref, id, {
