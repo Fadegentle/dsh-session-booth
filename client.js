@@ -417,7 +417,15 @@ window.__ModuleLoader__.load({
       }, [statuses])
       useEffect(() => {
         const unsubs = []
+        // PERF: status changes fire very frequently during streaming (every
+        // output tick. Instead of re-reading ALL panes on EVERY event (O(N)
+        // getSnapshot() calls per tick), coalesce events into a single read per
+        // animation frame. This keeps the dots responsive while removing the
+        // O(N×events) hot loop during streaming.
+        let raf = 0
+        let scheduled = false
         const readAll = () => {
+          scheduled = false
           const next = {}
           let changed = false
           for (const id of layout.ids) {
@@ -441,14 +449,23 @@ window.__ModuleLoader__.load({
               /* binding not ready yet */
             }
           }
-          if (changed) setStatuses(next)
+                  }
+        // scheduleRead: coalesce face events into ONE readAll per animation frame.
+        const scheduleRead = () => {
+          if (scheduled) return
+          scheduled = true
+          raf = requestAnimationFrame(() => {
+            raf = 0
+            scheduled = false
+            readAll()
+          })
         }
         for (const id of layout.ids) {
           const pane = paneRefs[id]
           const face = pane?.ref?.binding?.session
           if (!face) continue
           try {
-            const unsub = face.subscribe(() => readAll())
+            const unsub = face.subscribe(scheduleRead)
             if (typeof unsub === 'function') unsubs.push(unsub)
           } catch {
             /* binding not ready yet */
