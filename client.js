@@ -112,6 +112,7 @@ window.__ModuleLoader__.load({
           // (a direct child of [data-conversation-scroll]) must also flex-
           // grow to push the composer to the bottom when the transcript is
           // short — normally gated behind `.root[data-phase=active]`.
+          '[data-conversation-scroll]{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}\n' +
           '[data-composer-seat]{position:sticky;bottom:0;flex:none;z-index:2}\n' +
           // The chat view area is the first direct child of the scrollport
           // (everything before the composer seat). Give it flex:1 0 auto so
@@ -704,21 +705,22 @@ window.__ModuleLoader__.load({
               }, wsTitle || title || t('split.panelLabel')),
             ),
             // Right: "> session" on a gray chip. Click opens the switcher.
+            // The ">" is bold and larger with margin for clear visibility.
             hasSessionPart
               ? h('button', {
                 onClick: (e) => { e.stopPropagation(); setSwitchOpen(v => !v) },
                 title: t('split.switchSession'),
                 style: {
-                  display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0,
-                  height: '100%', padding: '0 8px 0 6px', border: 'none', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                  height: '100%', padding: '0 10px 0 8px', border: 'none', cursor: 'pointer',
                   background: 'var(--dsh-border, #333)', color: 'var(--dsh-fg, #eee)',
-                  fontSize: 12, opacity: 0.85,
+                  fontSize: 12, opacity: 0.9,
                 },
               },
-                h('span', { style: { opacity: 0.9, fontSize: 14, fontWeight: 700, lineHeight: 1 } }, '›'),
+                h('span', { style: { opacity: 1, fontSize: 15, fontWeight: 800, lineHeight: 1, marginRight: 4 } }, '>'),
                 h('span', {
                   style: {
-                    whiteSpace: 'nowrap',
+                    whiteSpace: 'nowrap', fontWeight: 600,
                   },
                 }, title || ''),
               )
@@ -771,8 +773,9 @@ window.__ModuleLoader__.load({
               },
             },
               h('button', {
+                type: 'button',
                 title: t('split.removeSession'), 'aria-label': t('split.removeSession'),
-                onClick: onRemove,
+                onClick: (e) => { e.stopPropagation(); e.preventDefault(); onRemove() },
                 style: cornerBtnStyle(),
               }, h(MinusIcon)),
               // Vertical divider between "−" and "+".
@@ -780,8 +783,9 @@ window.__ModuleLoader__.load({
                 style: { width: 1, alignSelf: 'stretch', background: 'var(--dsh-border, #333)' },
               }),
               h('button', {
+                type: 'button',
                 title: t('split.addSession'), 'aria-label': t('split.addSession'),
-                onClick: onAdd,
+                onClick: (e) => { e.stopPropagation(); e.preventDefault(); onAdd() },
                 style: cornerBtnStyle(),
               }, h(PlusIcon)),
             ),
