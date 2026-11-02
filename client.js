@@ -102,32 +102,14 @@ window.__ModuleLoader__.load({
         const el = document.createElement('style')
         el.textContent =
           '@keyframes dshSplitPulse { 0%,100% { opacity: 1 } 50% { opacity: 0.25 } }\n' +
-          // The conversation.content factory returns only `.body`, not the
-          // phase-gated `.root`/`.embeddedBody`, so the composer's sticky
-          // positioning (normally gated behind `.root[data-phase=active]`
-          // or `.embeddedBody[data-content-phase=active]`) never applies.
-          // Re-apply it here, scoped to the stable `data-composer-seat`
-          // attribute, so the composer stays pinned to the bottom of the
-          // pane's scrollport and follows the scroll. The chat view area
-          // (a direct child of [data-conversation-scroll]) must also flex-
-          // grow to push the composer to the bottom when the transcript is
-          // short — normally gated behind `.root[data-phase=active]`.
-          //
-          // Important: the SlotOutlet wrapper between [data-conversation-scroll]
-          // and .viewArea is `display:contents` (no box), so selectors on it
-          // are inert. We therefore target .viewArea via the attribute chain
-          // and force a definite height on the whole flex chain so the
-          // composer never escapes to the page bottom.
-          '[data-conversation-content]{flex:1 1 0% !important;min-height:0 !important;height:100% !important;display:flex !important;flex-direction:column !important}\n' +
-          '[data-conversation-scroll]{flex:1 1 0% !important;min-height:0 !important;height:100% !important;overflow-y:auto !important;display:flex !important;flex-direction:column !important}\n' +
-          '[data-composer-seat]{position:sticky !important;bottom:0 !important;flex:none !important;z-index:2 !important}\n' +
-          // The chat view area is whatever non-composer, non-slot element
-          // lives inside the scrollport. Give it flex:1 1 0% so it grows to
-          // fill the pane, pushing the composer to the bottom even when the
-          // transcript is short. We can't use a child combinator (the
-          // display:contents wrapper breaks it), so match any descendant that
-          // is neither a SlotOutlet (data-slot) nor the composer seat.
-          '[data-conversation-scroll] :not([data-composer-seat]):not([data-slot]){flex:1 1 0% !important;min-height:0 !important}'
+          // The composer (input dialog) renders with DSH's default styling.
+          // Our pane gives the flex chain a definite height (height:100% on
+          // the content box), so `.body`/`.scrollBody` (flex:1; min-height:0)
+          // fill the pane and the composer (`flex:none`) naturally sits at the
+          // pane bottom — no forced sticky/CSS overrides needed. The
+          // conversation.content factory returns only `.body` (not the
+          // phase-gated `.root`/`.embeddedBody`), so DSH's own gated sticky
+          // rule never fires here; the natural flex layout handles it.
         document.head.appendChild(el)
       } catch {
         /* ignore */
