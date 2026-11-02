@@ -112,15 +112,22 @@ window.__ModuleLoader__.load({
           // (a direct child of [data-conversation-scroll]) must also flex-
           // grow to push the composer to the bottom when the transcript is
           // short — normally gated behind `.root[data-phase=active]`.
-          '[data-conversation-scroll]{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column}\n' +
-          '[data-composer-seat]{position:sticky;bottom:0;flex:none;z-index:2}\n' +
-          // The chat view area is the first direct child of the scrollport
-          // (everything before the composer seat). Give it flex:1 0 auto so
-          // it grows to fill the pane, pushing the composer to the bottom
-          // even when the transcript is short (normally gated behind
-          // `.root[data-phase=active]`). The composer seat is excluded so it
-          // stays flex:none and sticky at the bottom.
-          '[data-conversation-scroll]>:not([data-composer-seat]){flex:1 0 auto;min-height:0}'
+          //
+          // Important: the SlotOutlet wrapper between [data-conversation-scroll]
+          // and .viewArea is `display:contents` (no box), so selectors on it
+          // are inert. We therefore target .viewArea via the attribute chain
+          // and force a definite height on the whole flex chain so the
+          // composer never escapes to the page bottom.
+          '[data-conversation-content]{flex:1 1 0% !important;min-height:0 !important;height:100% !important;display:flex !important;flex-direction:column !important}\n' +
+          '[data-conversation-scroll]{flex:1 1 0% !important;min-height:0 !important;height:100% !important;overflow-y:auto !important;display:flex !important;flex-direction:column !important}\n' +
+          '[data-composer-seat]{position:sticky !important;bottom:0 !important;flex:none !important;z-index:2 !important}\n' +
+          // The chat view area is whatever non-composer, non-slot element
+          // lives inside the scrollport. Give it flex:1 1 0% so it grows to
+          // fill the pane, pushing the composer to the bottom even when the
+          // transcript is short. We can't use a child combinator (the
+          // display:contents wrapper breaks it), so match any descendant that
+          // is neither a SlotOutlet (data-slot) nor the composer seat.
+          '[data-conversation-scroll] :not([data-composer-seat]):not([data-slot]){flex:1 1 0% !important;min-height:0 !important}'
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -674,7 +681,7 @@ window.__ModuleLoader__.load({
       // drives ScrollFollow). We deliberately render it in a flex-fill box
       // with no outer scroller and no manual live-follow: a second scrollport
       // would duplicate the factory's scrolling, causing jitter and clipping.
-      return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', width: '100%' } },
+      return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' } },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 8px 4px', flexShrink: 0 } },
           // Top-left title pill. Left = workspace name (click → jump). Right =
           // "> session" on a gray background (click → workspace switcher).
@@ -704,23 +711,23 @@ window.__ModuleLoader__.load({
                 },
               }, wsTitle || title || t('split.panelLabel')),
             ),
-            // Right: "> session" on a gray chip. Click opens the switcher.
-            // The ">" is bold and larger with margin for clear visibility.
+            // Right: session name as a breadcrumb-style label (matches the
+            // normal DSH header's `.crumb` — no chip background, no border).
+            // Click opens the workspace switcher.
             hasSessionPart
               ? h('button', {
                 onClick: (e) => { e.stopPropagation(); setSwitchOpen(v => !v) },
                 title: t('split.switchSession'),
                 style: {
                   display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-                  height: '100%', padding: '0 10px 0 8px', border: 'none', cursor: 'pointer',
-                  background: 'var(--dsh-border, #333)', color: 'var(--dsh-fg, #eee)',
-                  fontSize: 12, opacity: 0.9,
+                  height: '100%', padding: '4px 8px', border: 'none', cursor: 'pointer',
+                  background: 'transparent', color: 'var(--dsh-fg, #eee)',
+                  fontSize: 13, opacity: 0.9, borderRadius: 6,
                 },
               },
-                h('span', { style: { opacity: 1, fontSize: 15, fontWeight: 800, lineHeight: 1, marginRight: 4 } }, '>'),
                 h('span', {
                   style: {
-                    whiteSpace: 'nowrap', fontWeight: 600,
+                    whiteSpace: 'nowrap', fontWeight: 500,
                   },
                 }, title || ''),
               )
@@ -797,7 +804,7 @@ window.__ModuleLoader__.load({
         // height, which clips the composer and breaks scrolling. No outer
         // scroller here: the factory owns its own [data-conversation-scroll]
         // scrollport and native bottom-follow.
-        h('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' } },
+        h('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', position: 'relative', height: '100%' } },
           renderFactorySlot('conversation.content', { variant: 'split', phase: 'active', hero: false }, {
             slots: {},
           }),
@@ -870,16 +877,21 @@ window.__ModuleLoader__.load({
         const layout = {
           ids: [],
           listeners: new Set(),
-          set(ids) { this.initialized = true; this.ids = ids; writeStoredIds(ids); this.emit() },
-          remove(id) { this.ids = this.ids.filter(x => x !== id); writeStoredIds(this.ids); this.emit() },
-          addMissing(ids) {
-            const next = this.ids.slice()
+          // Arrow-function methods so `this` is always the layout object even
+          // when the methods are passed as bare references (e.g. into the
+          // SplitPanel prop object: `{ set: layout.set, remove: layout.remove }`).
+          // Calling `layout.remove(id)` there would otherwise bind `this` to
+          // the prop wrapper, whose `listeners` is undefined and `emit()` throws.
+          set: (ids) => { layout.initialized = true; layout.ids = ids; writeStoredIds(ids); layout.emit() },
+          remove: (id) => { layout.ids = layout.ids.filter(x => x !== id); writeStoredIds(layout.ids); layout.emit() },
+          addMissing: (ids) => {
+            const next = layout.ids.slice()
             for (const id of ids) if (!next.includes(id)) next.push(id)
-            this.ids = next; writeStoredIds(next); this.emit()
+            layout.ids = next; writeStoredIds(next); layout.emit()
           },
           // Cancel: mark configured so the picker never auto-reopens, but
           // keep ids empty (no layout persisted yet).
-          dismiss() { this.initialized = true; this.emit() },
+          dismiss: () => { layout.initialized = true; layout.emit() },
           subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn) },
           emit() { for (const fn of this.listeners) fn(this.ids) },
         }
