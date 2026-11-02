@@ -350,6 +350,40 @@ window.__ModuleLoader__.load({
      * The "splitview" main panel: a grid of n conversation panes, each inside
      * an explicit SessionProvider so it binds to its own session.
      */
+
+    // gcd / lcm helpers for the staircase grid layout.
+    function gcd(a, b) { while (b) { const t = a % b; a = b; b = t } return a }
+    function lcm(a, b) { return (a / gcd(a, b)) * b }
+
+    // Balanced staircase layout: no empty grid cells. For N items we pick
+    // rows = round(sqrt(N)) and distribute the items so the bottom rows are
+    // slightly wider (e.g. 5 -> [2,3] = "上2下3"). Every row fills completely.
+    // Returns { rows, totalCols, placements: [{row, col, colSpan}] }.
+    function computeStaircase(n) {
+      if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
+      const rows = Math.max(1, Math.round(Math.sqrt(n)))
+      const base = Math.floor(n / rows)
+      let rem = n % rows
+      // Put the +1 on the BOTTOM rows (user wants 上2下3, not 3上2).
+      const counts = []
+      for (let i = 0; i < rows; i++) {
+        const extra = (i >= rows - rem) ? 1 : 0
+        counts.push(base + extra)
+      }
+      let totalCols = 1
+      for (const c of counts) totalCols = lcm(totalCols, c)
+      const placements = []
+      let col = 0
+      for (let r = 0; r < rows; r++) {
+        const span = totalCols / counts[r]
+        for (let p = 0; p < counts[r]; p++) {
+          placements.push({ row: r, col: col + p * span, colSpan: span })
+        }
+        col = 0
+      }
+      return { rows, totalCols, placements }
+    }
+
     function SplitPanel(props) {
       const { sessions, workspaces, layout, t, wsDisplay, SessionProvider, renderPane, uiWorkspace } = props
 
@@ -365,6 +399,24 @@ window.__ModuleLoader__.load({
       // animation frame until every pane is mounted, so the initial paint is
       // fast and the remaining editors initialize across subsequent frames.
       const [mounted, setMounted] = useState(() => new Set())
+
+      // Drag-to-reorder (like app icons): long-press an empty pane area to
+      // lift it, then drag to a new position. dragIndex = the lifted pane's
+      // layout index; dragOver = the index it would land on; dragging gates
+      // pointer capture so a stray release can't drop it in the wrong place.
+      const [dragIndex, setDragIndex] = useState(null)
+      const [dragOver, setDragOver] = useState(null)
+      const dragTimer = useRef(null)
+      const dragStart = useRef(null)
+      const draggingRef = useRef(false)
+
+      // Reset any in-flight drag when the layout changes under us.
+      useEffect(() => {
+        if (dragIndex !== null && !layout.ids.includes(dragIndex)) {
+          setDragIndex(null); setDragOver(null)
+        }
+      }, [layout.ids.join(',')])
+
 
       // First visit (no persisted layout): open the multi-select picker so the
       // user chooses the sessions for the split view.
@@ -584,9 +636,12 @@ window.__ModuleLoader__.load({
       // cols = ceil(sqrt(N)), rows = ceil(N/cols). This keeps the grid as
       // square as possible so removing/adding sessions reflows the panes
       // instead of overflowing a fixed 2x2 box.
-      const n = layout.ids.length
-      const cols = Math.max(1, Math.ceil(Math.sqrt(n)))
-      const rows = Math.max(1, Math.ceil(n / cols))
+      // Responsive grid: balanced staircase so ODD counts never leave an
+      // empty cell. 5 panes -> 2 on top + 3 on bottom (上2下3).
+      const grid = computeStaircase(layout.ids.length)
+      const cols = grid.totalCols
+      const rows = grid.rows
+      const placements = grid.placements
 
       // Empty state (no panes yet): show a centered "add sessions" affordance.
       if (layout.ids.length === 0) {
@@ -611,6 +666,56 @@ window.__ModuleLoader__.load({
         )
       }
 
+
+      // Long-press to lift. We only start a drag if the pointer stays still
+      // for the threshold AND the press wasn't on an interactive control.
+      const startDragPress = (index) => (e) => {
+        if (e.button !== 0) return
+        const target = e.target
+        if (target && (target.closest('button') || target.closest('a') || target.closest('input,textarea,select'))) return
+        dragStart.current = { x: e.clientX, y: e.clientY, index }
+        draggingRef.current = false
+        clearTimeout(dragTimer.current)
+        dragTimer.current = setTimeout(() => {
+          draggingRef.current = true
+          setDragIndex(index)
+          setDragOver(index)
+        }, 260)
+      }
+
+      // If the pointer moves before the long-press fires, it's a click, not a drag.
+      const cancelDragPress = () => {
+        clearTimeout(dragTimer.current)
+        draggingRef.current = false
+      }
+
+      const onDragMove = (index) => (e) => {
+        if (!draggingRef.current) return
+        const over = document.elementFromPoint(e.clientX, e.clientY)
+        if (over) {
+          const paneEl = over.closest('[data-split-pane]')
+          if (paneEl && paneEl.__splitIndex !== undefined) {
+            setDragOver(paneEl.__splitIndex)
+          }
+        }
+      }
+
+      const endDrag = () => {
+        clearTimeout(dragTimer.current)
+        const from = dragIndex
+        const to = dragOver
+        draggingRef.current = false
+        dragStart.current = null
+        if (from !== null && to !== null && from !== to) {
+          const ids = layout.ids.slice()
+          const [moved] = ids.splice(from, 1)
+          ids.splice(to, 0, moved)
+          layout.set(ids)
+        }
+        setDragIndex(null)
+        setDragOver(null)
+      }
+
       return h('div', {
         style: {
           display: 'grid',
@@ -619,8 +724,10 @@ window.__ModuleLoader__.load({
           height: '100%', width: '100%', gap: 1, background: 'var(--dsh-border, #333)',
         },
       },
-        layout.ids.map(id => h(GridItem, {
+        layout.ids.map((id, index) => h(GridItem, {
           key: id,
+          index,
+          placement: placements[index] || { row: 0, col: 0, colSpan: 1 },
           id,
           pane: paneRefs[id],
           renderPane,
@@ -641,6 +748,13 @@ window.__ModuleLoader__.load({
           t,
           SessionProvider,
           mounted: mounted.has(id),
+          dragIndex,
+          dragOver,
+          onDragStart: startDragPress(index),
+          onDragMove: onDragMove(index),
+          onDragEnd: endDrag,
+          onDragCancel: cancelDragPress,
+
           empty: t('split.pickerEmpty'),
         })),
         picker && (createPortal
@@ -703,9 +817,18 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
       return h('div', {
-        style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0 },
+        'data-split-pane': index,
+        onPointerDown: onDragStart,
+        onPointerMove: onDragMove,
+        onPointerUp: onDragEnd,
+        onPointerLeave: onDragCancel,
+        style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0, gridColumn: placement ? `span ${placement.colSpan}` : undefined, gridRow: placement ? placement.row + 1 : undefined,
+          transition: 'box-shadow 120ms ease, transform 120ms ease',
+          boxShadow: dragIndex !== null && dragIndex === index ? '0 12px 32px rgba(0,0,0,0.6)' : 'none',
+          zIndex: dragIndex !== null && dragIndex === index ? 30 : undefined,
+          opacity: dragIndex !== null && dragOver === index && dragIndex !== index ? 0.6 : 1 },
       },
         mounted && pane?.ref
           ? h(SessionProvider, { session: pane.ref },
@@ -755,54 +878,53 @@ window.__ModuleLoader__.load({
       // would duplicate the factory's scrolling, causing jitter and clipping.
       return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' } },
         h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 8px 4px', flexShrink: 0 } },
-          // Top-left title as plain DSH-style breadcrumbs (matches the normal
-          // DSH ConversationSessionHeader): workspace crumb / session crumb,
-          // transparent background, no border box, no shadow.
+          // Top-left: a bordered floating window matching the top-right "-+"
+          // control, with the session name as a GRAY chip on the right. Clicking
+          // the gray session chip opens a vertical list at the split boundary.
           h('div', {
             style: {
               display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
               height: 26, position: 'relative',
+              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
+              borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
             },
           },
-            // Workspace name crumb (tertiary color). Click jumps to this session.
+            // Workspace name crumb (tertiary). Click jumps to this session.
             h('button', {
               onClick: onJump,
               title: t('split.jump'),
               style: {
-                display: 'inline-block', maxWidth: 220,
+                display: 'inline-block', maxWidth: 200,
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                 color: 'var(--dsw-alias-label-tertiary, #999)',
                 background: 'transparent', border: 'none', cursor: 'pointer',
-                padding: '4px 8px', fontSize: 14, lineHeight: '20px',
+                padding: '2px 6px', fontSize: 13, lineHeight: '18px',
                 borderRadius: 'var(--dsw-radius-md, 6px)', flexShrink: 0,
               },
             },
               h('span', { style: { whiteSpace: 'nowrap' } }, wsTitle || title || t('split.panelLabel')),
             ),
-            // Separator (caption color).
-            h('span', {
-              style: {
-                color: 'var(--dsw-alias-label-caption, #777)', fontSize: 14, lineHeight: '20px',
-              },
-            }, '/'),
-            // Session name crumb (primary color, weight 500). Click opens switcher.
+            // Separator (caption).
+            h('span', { style: { color: 'var(--dsw-alias-label-caption, #777)', fontSize: 13, lineHeight: '18px' } }, '/'),
+            // Session name GRAY chip (primary, weight 500). Click opens the
+            // vertical session list at the split boundary.
             hasSessionPart
               ? h('button', {
                 onClick: (e) => { e.stopPropagation(); setSwitchOpen(v => !v) },
                 title: t('split.switchSession'),
                 style: {
-                  display: 'inline-block', maxWidth: 220,
+                  display: 'inline-block', maxWidth: 200,
                   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   color: 'var(--dsw-alias-label-primary, #eee)',
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  padding: '4px 8px', fontSize: 14, lineHeight: '20px',
+                  background: 'var(--dsh-border, #333)', border: 'none', cursor: 'pointer',
+                  padding: '2px 8px', fontSize: 13, lineHeight: '18px',
                   fontWeight: 500, borderRadius: 'var(--dsw-radius-md, 6px)', flexShrink: 0,
                 },
               },
                 h('span', { style: { whiteSpace: 'nowrap', fontWeight: 500 } }, title || ''),
               )
               : null,
-            // Workspace-switcher dropdown (anchored under the crumbs).
+            // Vertical session list anchored at the split boundary (left edge).
             switchOpen && workspace
               ? h('div', {
                 style: {
