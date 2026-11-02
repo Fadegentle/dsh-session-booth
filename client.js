@@ -696,6 +696,8 @@ window.__ModuleLoader__.load({
           const paneEl = over.closest('[data-split-pane]')
           if (paneEl && paneEl.__splitIndex !== undefined) {
             setDragOver(paneEl.__splitIndex)
+          } else if (paneEl && paneEl.dataset.splitPane !== undefined) {
+            setDragOver(Number(paneEl.dataset.splitPane))
           }
         }
       }
@@ -904,8 +906,6 @@ window.__ModuleLoader__.load({
             },
               h('span', { style: { whiteSpace: 'nowrap' } }, wsTitle || title || t('split.panelLabel')),
             ),
-            // Separator (caption).
-            h('span', { style: { color: 'var(--dsw-alias-label-caption, #777)', fontSize: 13, lineHeight: '18px' } }, '/'),
             // Session name GRAY chip (primary, weight 500). Click opens the
             // vertical session list at the split boundary.
             hasSessionPart
