@@ -114,7 +114,7 @@ window.__ModuleLoader__.load({
           // consumes any leftover vertical space and pins the composer to the
           // pane bottom for both blank and populated sessions.
           '[data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
-          '[data-conversation-scroll] .viewArea { flex: 1 0 auto !important; min-height: auto !important }\n';
+          '[data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
