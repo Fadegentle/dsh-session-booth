@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "title": "Session Booth",
+    "description": "Show multiple sessions side by side in a persistent split view."
+  },
+  "split": {
+    "panelLabel": "Session Booth",
+    "pickerTitle": "Select sessions",
+    "pickerHint": "Choose one or more sessions to show in the session booth.",
+    "pickerEmpty": "No active sessions yet. Start a session first.",
+    "pickerConfirm": "Open session booth",
+    "pickerCancel": "Cancel",
+    "addSession": "Add session",
+    "removeSession": "Remove this session",
+    "addTitle": "Add a session to the booth",
+    "close": "Close session booth",
+    "showRecent": "Show only recent active sessions",
+    "showAll": "Show all sessions",
+    "ungrouped": "Ungrouped",
+    "empty": "No sessions yet",
+    "emptyAdd": "Add sessions",
+    "recent": "Recent"
+  }
+}

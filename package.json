@@ -1,0 +1,34 @@
+{
+  "name": "@local/session-booth",
+  "type": "module",
+  "version": "0.1.0",
+  "main": "./index.js",
+  "description": "Session Booth: a persistent multi-session split view in the DSH main window.",
+  "exports": {
+    ".": "./index.js",
+    "./index.js": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./src/locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "icon.svg",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

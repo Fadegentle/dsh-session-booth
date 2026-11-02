@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "title": "会话廊",
+    "description": "在主窗口中并排显示多个会话，布局会持久保存。"
+  },
+  "split": {
+    "panelLabel": "会话廊",
+    "pickerTitle": "选择会话",
+    "pickerHint": "选择一个或多个要在会话廊中显示的会话。",
+    "pickerEmpty": "当前没有活动的会话。请先启动一个会话。",
+    "pickerConfirm": "打开会话廊",
+    "pickerCancel": "取消",
+    "addSession": "添加会话",
+    "removeSession": "移除该会话",
+    "addTitle": "向会话廊添加会话",
+    "close": "关闭会话廊",
+    "showRecent": "仅显示最近活跃的会话",
+    "showAll": "显示所有会话",
+    "ungrouped": "未分组",
+    "empty": "暂无会话",
+    "emptyAdd": "添加会话",
+    "recent": "最近"
+  }
+}
