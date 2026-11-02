@@ -449,7 +449,7 @@ window.__ModuleLoader__.load({
               /* binding not ready yet */
             }
           }
-                  }
+          }
         // scheduleRead: coalesce face events into ONE readAll per animation frame.
         const scheduleRead = () => {
           if (scheduled) return
@@ -582,37 +582,29 @@ window.__ModuleLoader__.load({
           height: '100%', width: '100%', gap: 1, background: 'var(--dsh-border, #333)',
         },
       },
-        layout.ids.map(id => {
-          const pane = paneRefs[id]
-          return h('div', {
-            key: id,
-            style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0 },
-          },
-            pane?.ref
-              ? h(SessionProvider, { session: pane.ref },
-                h('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' } },
-                  renderPane(pane.ref, id, {
-                    onAdd: () => setPicker({ mode: 'add', exclude: disabled }),
-                    onRemove: () => layout.remove(id),
-                    status: statuses[id],
-                    title: titles[id] || byId[id]?.displayTitle || byId[id]?.title || '',
-                    pillWidth,
-                    workspace: (() => {
-                      const ws = wsBySession.get(id)
-                      if (!ws) return null
-                      return { ...ws, title: wsDisplay(ws.title), currentSessionId: id }
-                    })(),
-                    sessionTitles: byId,
-                    sessionTitleOf,
-                    onJump: () => uiWorkspace.openSession(id),
-                    onSwitch: (sessionId) => uiWorkspace.openSession(sessionId),
-                    t,
-                  }),
-                ),
-              )
-              : h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 12, opacity: 0.5 } }, t('split.pickerEmpty')),
-          )
-        }),
+        layout.ids.map(id => h(GridItem, {
+          key: id,
+          id,
+          pane: paneRefs[id],
+          renderPane,
+          onAdd: () => setPicker({ mode: 'add', exclude: disabled }),
+          onRemove: () => layout.remove(id),
+          status: statuses[id],
+          title: titles[id] || byId[id]?.displayTitle || byId[id]?.title || '',
+          pillWidth,
+          workspace: (() => {
+            const ws = wsBySession.get(id)
+            if (!ws) return null
+            return { ...ws, title: wsDisplay(ws.title), currentSessionId: id }
+          })(),
+          sessionTitles: byId,
+          sessionTitleOf,
+          onJump: () => uiWorkspace.openSession(id),
+          onSwitch: (sessionId) => uiWorkspace.openSession(sessionId),
+          t,
+          SessionProvider,
+          empty: t('split.pickerEmpty'),
+        })),
         picker && (createPortal
           ? createPortal(h(SessionPicker, {
             sessions: available,
@@ -665,6 +657,39 @@ window.__ModuleLoader__.load({
           })),
       )
     }
+
+    /**
+     * One grid cell: the wrapper around a pane's SessionProvider and
+     * conversation content. Memoized so that when `layout.ids` changes
+     * (add/remove session) React reuses the existing cell component
+     * instance and only re-renders cells whose props actually changed,
+     * instead of rebuilding every wrapper element in the grid.
+     */
+    const GridItem = React.memo(function GridItem({ id, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty }) {
+      return h('div', {
+        style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0 },
+      },
+        pane?.ref
+          ? h(SessionProvider, { session: pane.ref },
+            h('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' } },
+              renderPane(pane.ref, id, {
+                onAdd,
+                onRemove,
+                status,
+                title,
+                pillWidth,
+                workspace,
+                sessionTitles,
+                sessionTitleOf,
+                onJump,
+                onSwitch,
+                t,
+              }),
+            ),
+          )
+          : h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 12, opacity: 0.5 } }, empty),
+      )
+    })
 
     /**
      * One split pane: renders the conversation content factory for the bound
