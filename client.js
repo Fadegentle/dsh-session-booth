@@ -122,7 +122,14 @@ window.__ModuleLoader__.load({
           // Card fade in/out (渐入渐出): session boxes animate opacity when
           // added (fade in) and when removed (fade out over 200ms).
           '@keyframes dshSplitFadeIn { from { opacity: 0 } to { opacity: 1 } }\n' +
-          '@keyframes dshSplitFadeOut { from { opacity: 1 } to { opacity: 0 } }\n';
+          '@keyframes dshSplitFadeOut { from { opacity: 1 } to { opacity: 0 } }\n' +
+          // Unified loading overlay (统一加载动画): shown on FIRST entry,
+          // stays until every pane is fully mounted/rendered, then fades out.
+          // Only ever shows once (never re-appears on subsequent add/remove).
+          '@keyframes dshSplitSpin { to { transform: rotate(360deg) } }\n' +
+          '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 220ms ease; pointer-events: none }\n' +
+          '.dshSplitLoading.done { opacity: 0 }\n' +
+          '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -407,6 +414,21 @@ window.__ModuleLoader__.load({
       // animation frame until every pane is mounted, so the initial paint is
       // fast and the remaining editors initialize across subsequent frames.
       const [mounted, setMounted] = useState(() => new Set())
+      // Unified loading overlay state: shows on FIRST entry and fades out once
+      // every pane is mounted. `showLoading` is true until the first time the
+      // layout has ids AND all of them are mounted; then it's set false
+      // forever (a `loadingShown` ref prevents it from re-appearing on any
+      // subsequent add/remove, which was the "stuck on add" bug).
+      const [showLoading, setShowLoading] = useState(true)
+      const loadingShown = useRef(false)
+      useEffect(() => {
+        if (layout.ids.length === 0) { setShowLoading(true); loadingShown.current = false; return }
+        const allMounted = layout.ids.every(id => mounted.has(id))
+        if (allMounted && !loadingShown.current) {
+          loadingShown.current = true
+          setShowLoading(false)
+        }
+      }, [layout.ids.join(','), mounted.size])
 
       // Drag-to-reorder (like app icons): long-press an empty pane area to
       // lift it, then drag to a new position. dragIndex = the lifted pane's
@@ -882,6 +904,17 @@ window.__ModuleLoader__.load({
             },
           })),
         ),
+        // Unified loading overlay (统一加载动画). `showLoading` is true only
+        // on first entry (until every pane mounts), then fades out and never
+        // re-appears. `done` sets opacity 0; pointer-events:none keeps it
+        // from blocking the already-rendered panes underneath.
+        showLoading && layout.ids.length > 0
+          ? h('div', {
+            className: 'dshSplitLoading',
+          },
+            h('div', { className: 'spinner' }),
+          )
+          : null,
       )
     }
 
