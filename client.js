@@ -586,12 +586,17 @@ window.__ModuleLoader__.load({
             if (!face) continue
             try {
               const s = face.getSnapshot()
-              // Detect per-turn "处理失败" (turn-error): the session snapshot
-              // has no turn-error field, but the binding's eventSource streams
-              // turn/end events whose reason.kind === 'error'. We scan the
-              // event window's latest turn/end to decide whether the last turn
-              // failed. We also clear the sticky error when a new turn starts
-              // (running becomes true), so a later success resets the dot.
+              // Detect per-turn "处理失败" / "本轮运行失败" (turn-error). The
+              // session snapshot has no turn-error field, so we scan the
+              // binding's event window for the LATEST turn/end and decide
+              // whether it is a real failure. This mirrors DSH's own
+              // endFailure() (dsh-client-ui-chat) which treats NOT ONLY
+              // reason.kind === 'error' as a failure, but also:
+              //   - 'aborted' with reason.reason.kind === 'hook' &&
+              //     reason.reason.reason === 'deepseek-account/signed-out'
+              //   - 'interrupted' (DSH process exited mid-turn)
+              // dsh-im sessions report "本轮运行失败" via reason.kind ===
+              // 'interrupted' or 'aborted', which our old check missed.
               let turnFailed = false
               try {
                 const eventSource = pane?.ref?.binding?.eventSource
@@ -601,7 +606,12 @@ window.__ModuleLoader__.load({
                   const ev = entries[i]?.event
                   if (!ev) continue
                   if (ev.type === 'turn/end') {
-                    turnFailed = ev.data?.reason?.kind === 'error'
+                    const reason = ev.data?.reason
+                    if (reason?.kind === 'error') turnFailed = true
+                    else if (reason?.kind === 'interrupted') turnFailed = true
+                    else if (reason?.kind === 'aborted' &&
+                      reason?.reason?.kind === 'hook' &&
+                      reason?.reason?.reason === 'deepseek-account/signed-out') turnFailed = true
                     break
                   }
                 }
@@ -833,7 +843,7 @@ window.__ModuleLoader__.load({
           id,
           pane: paneRefs[id],
           renderPane,
-          onAdd: () => setPicker({ mode: 'add', exclude: disabled }),
+          onAdd: () => setPicker({ mode: 'add', exclude: disabled, afterIndex: index }),
           onRemove: () => requestRemove(id),
           removing: removing.has(id),
           status: statuses[id],
@@ -880,9 +890,20 @@ window.__ModuleLoader__.load({
             ungrouped: t('split.ungrouped'),
             onCancel: () => { layout.dismiss(); setPicker(null) },
             onConfirm: (ids) => {
-              // Both the initial pick and the edit ("+") dialog replace the
-              // layout with the chosen set, so currently-selected sessions can
-              // be unchecked (removed) as well as added.
+              // For an "add" ("+") confirm, insert the newly-chosen session
+              // AFTER the pane whose "+" was clicked (afterIndex), so the new
+              // window appears next to the source pane. For the initial pick,
+              // replace the layout with the chosen set as before. If the picker
+              // replaced the whole set (some sessions unchecked), fall back to
+              // a plain set to avoid surprising reorder semantics.
+              if (picker?.mode === 'add' && picker.afterIndex !== undefined && ids.length === layout.ids.length + 1) {
+                const added = ids.find(x => !layout.ids.includes(x))
+                if (added !== undefined) {
+                  layout.addAt(added, picker.afterIndex + 1)
+                  setPicker(null)
+                  return
+                }
+              }
               layout.set(ids)
               setPicker(null)
             },
@@ -976,6 +997,21 @@ window.__ModuleLoader__.load({
      */
     function PaneContentBase({ renderFactorySlot, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t }) {
       const [switchOpen, setSwitchOpen] = useState(false)
+      // Close the session-switcher dropdown on any click outside the floating
+      // title window (the dropdown is anchored inside it). A document-level
+      // mousedown listener checks whether the event target is contained by
+      // the title box ref; if not, it collapses the list. This is the
+      // conventional dropdown behavior and keeps the switch list from
+      // lingering open after the user clicks elsewhere.
+      const titleRef = React.useRef(null)
+      React.useEffect(() => {
+        if (!switchOpen) return
+        const onDocDown = (e) => {
+          if (titleRef.current && !titleRef.current.contains(e.target)) setSwitchOpen(false)
+        }
+        document.addEventListener('mousedown', onDocDown)
+        return () => document.removeEventListener('mousedown', onDocDown)
+      }, [switchOpen])
 
       // Split the title into a workspace part (left) and a session part
       // (right, gray background). Clicking the workspace name jumps to the
@@ -999,6 +1035,7 @@ window.__ModuleLoader__.load({
           // control, with the session name as a GRAY chip on the right. Clicking
           // the gray session chip opens a vertical list at the split boundary.
           h('div', {
+            ref: titleRef,
             className: 'dshSplitFloat',
             style: {
               display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
@@ -1198,6 +1235,17 @@ window.__ModuleLoader__.load({
             for (const id of ids) if (!next.includes(id)) next.push(id)
             layout.ids = next; writeStoredIds(next); layout.emit()
           },
+          // Insert a session AFTER the pane at `afterIndex` (the pane whose
+          // "+" was clicked), so the new window appears next to the source
+          // pane rather than always at the end of the layout.
+          addAt: (id, afterIndex) => {
+            const next = layout.ids.slice()
+            const existing = next.indexOf(id)
+            if (existing >= 0) next.splice(existing, 1)
+            const at = Math.max(0, Math.min(afterIndex, next.length))
+            next.splice(at, 0, id)
+            layout.ids = next; writeStoredIds(next); layout.emit()
+          },
           // Cancel: mark configured so the picker never auto-reopens, but
           // keep ids empty (no layout persisted yet).
           dismiss: () => { layout.initialized = true; layout.emit() },
@@ -1256,6 +1304,7 @@ window.__ModuleLoader__.load({
                 set: layout.set,
                 remove: layout.remove,
                 addMissing: layout.addMissing,
+                addAt: layout.addAt,
                 dismiss: layout.dismiss,
               },
               t,
