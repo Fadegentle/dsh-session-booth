@@ -693,27 +693,28 @@ window.__ModuleLoader__.load({
                   latestTurn.reason?.reason === 'deepseek-account/signed-out') return true
                 return false
               })()
-              // A turn that is currently running has NO turn/end yet. Only
-              // treat a *completed* turn as the driver; if the session is
-              // running, that overrides any settled failure (a retry that is
-              // actively running is no longer a "failed" state visually).
+              // User rule: read the LAST conversation's success/failure.
+              //   - last turn FAILED -> red, REGARDLESS of running state
+              //   - last turn SUCCEEDED (or none settled) -> live state:
+              //       running -> pulsing green
+              //       blank && never prompted -> yellow (pending)
+              //       otherwise -> solid green
               const live = s.running
                 ? 'running'
                 : s.blank && !s.promptAttempted
                   ? 'pending'
                   : 'done'
+              const settledFailure = !!(latestTurn && turnFailed)
+              const settled = !!(latestTurn && !turnFailed)
               next[id] = {
                 running: s.running,
                 blank: s.blank,
                 promptAttempted: s.promptAttempted,
-                // State machine (user-requested): read the LAST conversation's
-                // success/failure. Failure -> red. Otherwise -> current state.
-                error: !!(s.lastAgentError || s.openError || s.promptError || (latestTurn ? turnFailed : false) || (live === 'pending' && false)),
-                pending: live === 'pending',
-                // A session with NO settled turn yet is pending; otherwise it
-                // is done/error per the settled turn. We keep the live running
-                // state so the dot can pulse green during a retry.
-                _live: live,
+                // Failure (last turn failed) -> red. Otherwise live state.
+                error: !!(s.lastAgentError || s.openError || s.promptError || settledFailure),
+                pending: live === 'pending' && !settledFailure && !settled,
+                // Running (with a successful settled turn) -> pulsing green.
+                _live: settledFailure ? 'error' : live,
               }
               const prev = statusesRef.current[id]
               if (!prev || prev.running !== next[id].running || prev.blank !== next[id].blank ||
