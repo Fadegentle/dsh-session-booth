@@ -160,18 +160,20 @@ window.__ModuleLoader__.load({
     // Shelf layout orientation: 'rows' (横排, bookshelf — horizontal shelves
     // that stack vertically) or 'cols' (列排 — vertical columns that fill a
     // horizontal band). Persisted so the preferred arrangement survives a
-    // reload. Defaults to 'rows'.
+    // reload. DEFAULT IS null = no shelf layout chosen, so the booth opens on
+    // the even staircase grid; the shelf layout only kicks in after the user
+    // explicitly picks 行/列 (and that choice is then remembered).
     const ORIENTATIONS = ['rows', 'cols']
 
     function readStoredOrientation() {
       try {
         const raw = window.localStorage.getItem(ORIENTATION_KEY)
-        if (raw === null) return 'rows'
+        if (raw === null) return null
         const parsed = JSON.parse(raw)
         if (ORIENTATIONS.includes(parsed)) return parsed
-        return 'rows'
+        return null
       } catch {
-        return 'rows'
+        return null
       }
     }
 
@@ -1026,6 +1028,9 @@ window.__ModuleLoader__.load({
       // Layout resolution. When a shelf orientation is active and we've
       // measured the box, use the shelf grid (横排 shelves / 列排 columns);
       // otherwise fall back to the staircase / column-split model.
+      // Shelf layout is opt-in: only a user-picked 行/列 orientation engages
+      // it. With no orientation chosen (the default) `shelf` is null and the
+      // even staircase / column-split grid distributes the panes evenly.
       const shelf = isShelfOrientation(layout.orientation)
         ? shelfGrid(layout.ids.length, layout.orientation, perShelf)
         : null
@@ -1743,8 +1748,9 @@ window.__ModuleLoader__.load({
         const layout = {
           ids: [],
           // 'rows' (横排, bookshelf: horizontal shelves that stack vertically)
-          // or 'cols' (列排: vertical columns that fill horizontally).
-          orientation: 'rows',
+          // or 'cols' (列排: vertical columns that fill horizontally). null =
+          // no shelf layout chosen => the even staircase grid is used.
+          orientation: null,
           listeners: new Set(),
           // Arrow-function methods so `this` is always the layout object even
           // when the methods are passed as bare references (e.g. into the
