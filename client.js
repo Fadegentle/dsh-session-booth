@@ -897,10 +897,13 @@ window.__ModuleLoader__.load({
                 running: s.running,
                 blank: s.blank,
                 promptAttempted: s.promptAttempted,
-                // Failure (last turn failed) -> red. Otherwise live state.
-                error: !!(s.lastAgentError || s.openError || s.promptError || settledFailure),
+                // "Last turn failed" flag. StatusDot lets a RUNNING turn
+                // (retry/new) pulse green over this, so red = settled failure
+                // with nothing in-flight.
+                error: !!(settledFailure || (!s.running && (s.lastAgentError || s.openError || s.promptError))),
                 pending: live === 'pending' && !settledFailure && !settled,
-                // Running (with a successful settled turn) -> pulsing green.
+                running: s.running,
+                // Live state when the last turn did NOT fail.
                 _live: settledFailure ? 'error' : live,
               }
               const prev = statusesRef.current[id]
@@ -1663,19 +1666,21 @@ window.__ModuleLoader__.load({
     /**
      * Colored status indicator. State machine (user-requested):
      *  - the LAST completed turn failed -> red (regardless of running)
-     *  - otherwise a currently running turn -> green pulse
+     *  - a currently RUNNING turn -> green pulse (overrides a settled failure:
+     *    上一轮失败但现在正在跑 -> 绿色闪烁)
+     *  - otherwise a settled failure (nothing in-flight) -> red
      *  - otherwise blank & never prompted -> yellow (pending)
      *  - otherwise -> solid green (done)
      */
     function StatusDot({ status }) {
       const state = (() => {
         if (!status) return 'done'
-        // User rule: read the LAST conversation. Failure -> red, no matter
-        // whether a new/retry turn is now running.
-        if (status.error) return 'error'
-        // A running retry/new turn: pulse green (the failed dot already
-        // reported; a fresh in-flight turn is "working").
+        // User rule: read the LAST conversation. A RUNNING turn (new/retry)
+        // is "working" -> green pulse, even if the PREVIOUS turn failed (the
+        // red was already reported; a fresh in-flight turn is making progress).
         if (status.running) return 'running'
+        // Settled failure with nothing in-flight -> red.
+        if (status.error) return 'error'
         // No settled turn yet and never prompted -> pending (yellow).
         if (status.pending) return 'pending'
         if (status.blank && !status.promptAttempted) return 'pending'
