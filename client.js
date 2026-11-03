@@ -1520,42 +1520,45 @@ window.__ModuleLoader__.load({
         // multiple occupants with `replaceRisk: none`, so we never shadow the
         // shipped actions (agent-preset / jobs / subagent / agent-team) nor
         // sidebar-right's ExpandButton (which owns the `single` corner slot).
-        // The occupant derives `sessionId` from the standard session-scope
-        // props and receives the layout store + a "show the booth" callback
-        // through `inject`. Clicking adds the session to the booth layout and
-        // switches the main panel to it; if the session is already in the
-        // booth the button is a no-op.
-        ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-          name: 'conversation.session.header.actions',
-          id: 'session-booth-add',
-          order: 100,
-          locale: LOCALE_NS,
-          label: () => t('split.addToBooth'),
-          inject: () => ({ layout, showBooth: () => { try { ctx.layout.selectPanel('splitview') } catch { /* not registered yet */ } } }),
-        }, function BoothAddButton({ sessionId, layout: boothLayout, showBooth }) {
-          const [ids, setIds] = useState(boothLayout.ids)
-          const inBooth = ids.includes(sessionId)
-          useEffect(() => boothLayout.subscribe((next) => setIds(next)), [])
-          return h('button', {
-            type: 'button',
-            title: inBooth ? t('split.inBooth') : t('split.addToBooth'),
-            'aria-label': inBooth ? t('split.inBoothAria') : t('split.addToBoothAria'),
-            onClick: () => {
-              if (sessionId === undefined || inBooth) return
-              boothLayout.addMissing([sessionId])
-              showBooth()
-            },
-            style: {
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
-              border: 'none', background: 'transparent',
-              color: 'var(--dsh-fg, #eee)', opacity: 0.75, padding: 0,
-              transition: 'background 120ms ease, opacity 120ms ease',
-            },
-            onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--dsh-hover, rgba(255,255,255,0.08))'; e.currentTarget.style.opacity = '1' },
-            onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.75' },
-          }, h(PlusIcon, { size: 14 }))
-        }))
+        // Matches the proven sidebar registration exactly: a generator
+        // callback that yields one `register`, with only the fields that slot
+        // documents (name / id / order / label). `sessionId` arrives via the
+        // standard session-scope props; `layout` and `showBooth` are closed
+        // over from the apply scope (no `inject` needed). Registration is
+        // guarded so a failure here can never take down the whole plugin.
+        try {
+          ctx.slots.inject('conversation.session.header.actions', function* () {
+            yield ctx.slots.register({
+              name: 'conversation.session.header.actions',
+              id: 'session-booth-add',
+              order: 100,
+              label: () => t('split.addToBooth'),
+            }, function BoothAddButton({ sessionId }) {
+              const [ids, setIds] = useState(layout.ids)
+              const inBooth = ids.includes(sessionId)
+              useEffect(() => layout.subscribe((next) => setIds(next)), [])
+              return h('button', {
+                type: 'button',
+                title: inBooth ? t('split.inBooth') : t('split.addToBooth'),
+                'aria-label': inBooth ? t('split.inBoothAria') : t('split.addToBoothAria'),
+                onClick: () => {
+                  if (sessionId === undefined || inBooth) return
+                  layout.addMissing([sessionId])
+                  try { ctx.layout.selectPanel('splitview') } catch { /* not registered yet */ }
+                },
+                style: {
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+                  border: 'none', background: 'transparent',
+                  color: 'var(--dsh-fg, #eee)', opacity: 0.75, padding: 0,
+                  transition: 'background 120ms ease, opacity 120ms ease',
+                },
+                onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--dsh-hover, rgba(255,255,255,0.08))'; e.currentTarget.style.opacity = '1' },
+                onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.75' },
+              }, h(PlusIcon, { size: 14 }))
+            })
+          })
+        } catch (e) { console.error('[session-booth] header-action registration failed:', e) }
       },
     }
   },
