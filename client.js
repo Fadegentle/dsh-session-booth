@@ -647,18 +647,21 @@ window.__ModuleLoader__.load({
             if (!face) continue
             try {
               const s = face.getSnapshot()
-              // Detect per-turn "处理失败" / "本轮运行失败" (turn-error). The
-              // session snapshot has no turn-error field, so we scan the
-              // binding's event window for the LATEST turn/end and decide
-              // whether it is a real failure. This mirrors DSH's own
-              // endFailure() (dsh-client-ui-chat) which treats NOT ONLY
-              // reason.kind === 'error' as a failure, but also:
-              //   - 'aborted' with reason.reason.kind === 'hook' &&
-              //     reason.reason.reason === 'deepseek-account/signed-out'
-              //   - 'interrupted' (DSH process exited mid-turn)
-              // dsh-im sessions report "本轮运行失败" via reason.kind ===
-              // 'interrupted' or 'aborted', which our old check missed.
-              let turnFailed = false
+              // Per-turn "处理失败" / "本轮运行失败": the session snapshot has
+              // no turn-error field, so we decide from the LATEST turn/end in
+              // the binding's event window. The status dot is driven by whether
+              // that latest turn SUCCEEDED, independent of running state:
+              //   - latest turn/end is a failure -> red (regardless of running)
+              //   - latest turn/end is a success -> fall through to live state
+              //     (running -> pulsing green, blank+never-prompted -> yellow,
+              //      otherwise -> solid green)
+              // This mirrors DSH's own endFailure() (dsh-client-ui-chat),
+              // which treats NOT ONLY reason.kind === 'error' as a failure, but
+              // also 'aborted' with reason.reason.kind === 'hook' &&
+              // reason.reason.reason === 'deepseek-account/signed-out', and
+              // 'interrupted'. dsh-im sessions report "本轮运行失败" via
+              // reason.kind === 'interrupted' or 'aborted'.
+              let latestTurn = null
               try {
                 const eventSource = pane?.ref?.binding?.eventSource
                 const win = eventSource?.getSnapshot?.()
@@ -667,34 +670,48 @@ window.__ModuleLoader__.load({
                   const ev = entries[i]?.event
                   if (!ev) continue
                   if (ev.type === 'turn/end') {
-                    const reason = ev.data?.reason
-                    if (reason?.kind === 'error') turnFailed = true
-                    else if (reason?.kind === 'interrupted') turnFailed = true
-                    else if (reason?.kind === 'aborted' &&
-                      reason?.reason?.kind === 'hook' &&
-                      reason?.reason?.reason === 'deepseek-account/signed-out') turnFailed = true
+                    latestTurn = ev.data?.reason || null
                     break
                   }
                 }
               } catch {
                 /* eventSource not ready yet */
               }
+              const turnFailed = (() => {
+                if (!latestTurn) return false
+                if (latestTurn.kind === 'error') return true
+                if (latestTurn.kind === 'interrupted') return true
+                if (latestTurn.kind === 'aborted' &&
+                  latestTurn.reason?.kind === 'hook' &&
+                  latestTurn.reason?.reason === 'deepseek-account/signed-out') return true
+                return false
+              })()
+              // A turn that is currently running has NO turn/end yet. Only
+              // treat a *completed* turn as the driver; if the session is
+              // running, that overrides any settled failure (a retry that is
+              // actively running is no longer a "failed" state visually).
+              const live = s.running
+                ? 'running'
+                : s.blank && !s.promptAttempted
+                  ? 'pending'
+                  : 'done'
               next[id] = {
                 running: s.running,
                 blank: s.blank,
                 promptAttempted: s.promptAttempted,
-                // Red for ANY unacknowledged turn failure. We do NOT suppress
-                // this while the session is running: a session that reported
-                // "处理失败 / 本轮运行失败" stays red until a LATER turn ends
-                // successfully (turnFailed becomes false again when the latest
-                // turn/end carries a non-failure reason). This matches the user
-                // expectation that a failed round shows red even if a retry or
-                // a new turn has started.
-                error: !!(s.lastAgentError || s.openError || s.promptError || turnFailed),
+                // State machine (user-requested): read the LAST conversation's
+                // success/failure. Failure -> red. Otherwise -> current state.
+                error: !!(s.lastAgentError || s.openError || s.promptError || (latestTurn ? turnFailed : false) || (live === 'pending' && false)),
+                pending: live === 'pending',
+                // A session with NO settled turn yet is pending; otherwise it
+                // is done/error per the settled turn. We keep the live running
+                // state so the dot can pulse green during a retry.
+                _live: live,
               }
               const prev = statusesRef.current[id]
               if (!prev || prev.running !== next[id].running || prev.blank !== next[id].blank ||
-                  prev.promptAttempted !== next[id].promptAttempted || prev.error !== next[id].error) {
+                  prev.promptAttempted !== next[id].promptAttempted || prev.error !== next[id].error ||
+                  prev.pending !== next[id].pending) {
                 changed = true
               }
             } catch {
@@ -1250,17 +1267,23 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Colored status indicator. Derives state from the live SessionSnapshot:
-     *  - error   -> red (lastAgentError / openError / promptError)
-     *  - running -> green with a fade pulse animation
-     *  - pending -> yellow (blank, never had a first turn)
-     *  - done    -> solid green
+     * Colored status indicator. State machine (user-requested):
+     *  - the LAST completed turn failed -> red (regardless of running)
+     *  - otherwise a currently running turn -> green pulse
+     *  - otherwise blank & never prompted -> yellow (pending)
+     *  - otherwise -> solid green (done)
      */
     function StatusDot({ status }) {
       const state = (() => {
         if (!status) return 'done'
+        // User rule: read the LAST conversation. Failure -> red, no matter
+        // whether a new/retry turn is now running.
         if (status.error) return 'error'
+        // A running retry/new turn: pulse green (the failed dot already
+        // reported; a fresh in-flight turn is "working").
         if (status.running) return 'running'
+        // No settled turn yet and never prompted -> pending (yellow).
+        if (status.pending) return 'pending'
         if (status.blank && !status.promptAttempted) return 'pending'
         return 'done'
       })()
