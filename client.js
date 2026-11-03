@@ -48,6 +48,10 @@ window.__ModuleLoader__.load({
       'split.confirm': 'Confirm',
       'split.layoutGrid': 'Grid layout',
       'split.layoutColumns': 'Column layout',
+      'split.addToBooth': 'Add to Session Booth',
+      'split.addToBoothAria': 'Add this session to the Session Booth',
+      'split.inBooth': 'Already in the Session Booth',
+      'split.inBoothAria': 'This session is already in the Session Booth',
     }
 
     const zh = {
@@ -73,6 +77,10 @@ window.__ModuleLoader__.load({
       'split.confirm': '确认',
       'split.layoutGrid': '网格布局',
       'split.layoutColumns': '分栏布局',
+      'split.addToBooth': '加入会话廊',
+      'split.addToBoothAria': '将该会话加入会话廊',
+      'split.inBooth': '已在会话廊中',
+      'split.inBoothAria': '该会话已在会话廊中',
     }
 
     // ------------------------------------------------------------------ utils
@@ -838,16 +846,14 @@ window.__ModuleLoader__.load({
       const rows = grid.rows
       const placements = grid.placements
 
-      // Empty state (no panes yet): if the user has configured a layout before
-      // and now removed every window, we return to the normal editor instead of
-      // showing the "add sessions" affordance (the parent SplitViewPanel calls
-      // ctx.layout.selectPanel(null) in that case). Only the FIRST visit (no
-      // persisted layout) shows the empty-state affordance.
-      if (layout.ids.length === 0 && layout.initialized) {
-        return h('div', {
-          style: { height: '100%', width: '100%' },
-        })
-      }
+      // Empty state (no panes yet): show the "add sessions" affordance in BOTH
+      // the first-visit case (never configured) and the all-removed case
+      // (configured, then every window removed). The parent SplitViewPanel also
+      // calls ctx.layout.selectPanel(null) to return to the normal editor when
+      // the layout is empty-and-configured, but that call can race / not have
+      // landed yet. We therefore no longer return a blank black panel here —
+      // the affordance is always shown for an empty layout, giving the user a
+      // way back ("添加会话") instead of a stuck black screen.
       if (layout.ids.length === 0) {
         return h('div', {
           style: {
@@ -1506,6 +1512,50 @@ window.__ModuleLoader__.load({
             })
           })
         })
+
+        // ---- Per-session "加入会话廊" button ----
+        // Injected into EVERY real session window's header action row (the
+        // top-right cluster next to the breadcrumb title) via the
+        // `conversation.session.header.actions` LIST slot. A list slot accepts
+        // multiple occupants with `replaceRisk: none`, so we never shadow the
+        // shipped actions (agent-preset / jobs / subagent / agent-team) nor
+        // sidebar-right's ExpandButton (which owns the `single` corner slot).
+        // The occupant derives `sessionId` from the standard session-scope
+        // props and receives the layout store + a "show the booth" callback
+        // through `inject`. Clicking adds the session to the booth layout and
+        // switches the main panel to it; if the session is already in the
+        // booth the button is a no-op.
+        ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
+          name: 'conversation.session.header.actions',
+          id: 'session-booth-add',
+          order: 100,
+          locale: LOCALE_NS,
+          label: () => t('split.addToBooth'),
+          inject: () => ({ layout, showBooth: () => { try { ctx.layout.selectPanel('splitview') } catch { /* not registered yet */ } } }),
+        }, function BoothAddButton({ sessionId, layout: boothLayout, showBooth }) {
+          const [ids, setIds] = useState(boothLayout.ids)
+          const inBooth = ids.includes(sessionId)
+          useEffect(() => boothLayout.subscribe((next) => setIds(next)), [])
+          return h('button', {
+            type: 'button',
+            title: inBooth ? t('split.inBooth') : t('split.addToBooth'),
+            'aria-label': inBooth ? t('split.inBoothAria') : t('split.addToBoothAria'),
+            onClick: () => {
+              if (sessionId === undefined || inBooth) return
+              boothLayout.addMissing([sessionId])
+              showBooth()
+            },
+            style: {
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+              border: 'none', background: 'transparent',
+              color: 'var(--dsh-fg, #eee)', opacity: 0.75, padding: 0,
+              transition: 'background 120ms ease, opacity 120ms ease',
+            },
+            onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--dsh-hover, rgba(255,255,255,0.08))'; e.currentTarget.style.opacity = '1' },
+            onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.75' },
+          }, h(PlusIcon, { size: 14 }))
+        }))
       },
     }
   },
