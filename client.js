@@ -611,22 +611,22 @@ window.__ModuleLoader__.load({
     // so a wider/shorter booth simply fits more panes per shelf.
     function isShelfOrientation(o) { return o === 'rows' || o === 'cols' }
 
-    // Grid track counts for the current orientation. `perShelf` is the measured
-    // pane-per-shelf count; 0 means "not measured yet" (fall back to staircase).
-    function shelfGrid(n, orientation, perShelf) {
-      if (n <= 0 || !isShelfOrientation(orientation) || perShelf < 1) return null
+    // Grid track counts for the current orientation (one pane per row/column).
+    // Shelf layout is a STRICT one-per-row / one-per-column arrangement,
+    // derived directly from the pane count. 横排 ('rows'): one pane per
+    // horizontal row, rows stacked top-to-bottom. 列排 ('cols'): one pane per
+    // vertical column, columns laid out left-to-right. Because the track
+    // count comes straight from `n`, switching orientation applies instantly
+    // on click (no ResizeObserver re-measure needed) and evenly fills the
+    // booth — e.g. 5 sessions => 5 full-width rows, or 5 full-height columns.
+    function shelfGrid(n, orientation) {
+      if (n <= 0 || !isShelfOrientation(orientation)) return null
       if (orientation === 'cols') {
-        // 列排: vertical columns, each at least MIN_PANE_H tall, filling a
-        // horizontal band. Rows = panes per column; columns = how many bands.
-        const rowCount = perShelf
-        const colCount = Math.max(1, Math.ceil(n / rowCount))
-        return { rows: rowCount, totalCols: colCount }
+        // 列排: one pane per column, columns fill horizontally.
+        return { rows: 1, totalCols: n }
       }
-      // 横排: horizontal shelves, each at least MIN_PANE_W wide, stacking
-      // vertically. Columns = panes per shelf; rows = how many shelves.
-      const colCount = perShelf
-      const rowCount = Math.max(1, Math.ceil(n / colCount))
-      return { rows: rowCount, totalCols: colCount }
+      // 横排: one pane per row, rows stack vertically.
+      return { rows: n, totalCols: 1 }
     }
 
     function SplitPanel(props) {
@@ -674,7 +674,7 @@ window.__ModuleLoader__.load({
       const [dragIndex, setDragIndex] = useState(null)
       // Measured pane-per-shelf count for the shelf layout (横排 / 列排).
       // Declared early so the layout derivation below can read it.
-      const [perShelf, setPerShelf] = useState(0)
+
       const [dragOver, setDragOver] = useState(null)
       const dragTimer = useRef(null)
       const dragStart = useRef(null)
@@ -1032,7 +1032,7 @@ window.__ModuleLoader__.load({
       // it. With no orientation chosen (the default) `shelf` is null and the
       // even staircase / column-split grid distributes the panes evenly.
       const shelf = isShelfOrientation(layout.orientation)
-        ? shelfGrid(layout.ids.length, layout.orientation, perShelf)
+        ? shelfGrid(layout.ids.length, layout.orientation)
         : null
       const grid = shelf || computeLayout(layout.ids.length, layout.mode || 'grid')
       const cols = grid.totalCols
@@ -1042,12 +1042,10 @@ window.__ModuleLoader__.load({
       // the min-size track no longer fits. Explicit gridColumn/gridRow spans
       // would pin every pane to row 1 and defeat the wrapping.
       const placements = shelf ? [] : grid.placements
-      // Track sizes: in shelf mode panes never shrink below MIN_PANE_W/H, so
-      // the "-+" float is always fully visible; extra space is shared as
-      // flex-grow (1fr up to the min).
-      const trackMin = shelf
-        ? (layout.orientation === 'cols' ? MIN_PANE_H : MIN_PANE_W)
-        : null
+      // Track sizes: in shelf mode each pane owns a whole row/column, so the
+      // tracks are plain 1fr (the pane fills its full row/column and the
+      // "-+" float is always fully visible). No per-shelf min to enforce.
+      const trackMin = null
 
       // Empty state (no panes yet): show the "add sessions" affordance in BOTH
       // the first-visit case (never configured) and the all-removed case
@@ -1141,33 +1139,10 @@ window.__ModuleLoader__.load({
       }
 
       const gridRef = useRef(null)
-      // Measured pane-per-shelf count for the shelf layout (state declared
-      // above, next to the other useState so it is initialized before use).
-      // Derived from the live grid box size via ResizeObserver, so it tracks
-      // window resizes.
-      useEffect(() => {
-        const el = gridRef.current
-        if (!el) return
-        const measure = () => {
-          const w = el.clientWidth - SHELF_PAD * 2
-          const h = el.clientHeight - SHELF_PAD * 2
-          let count
-          if (layout.orientation === 'cols') {
-            // 列排: how many panes stack vertically before a new column band.
-            count = Math.max(1, Math.floor((h + SHELF_GAP) / (MIN_PANE_H + SHELF_GAP)))
-          } else {
-            // 横排: how many panes sit side-by-side before a new shelf.
-            count = Math.max(1, Math.floor((w + SHELF_GAP) / (MIN_PANE_W + SHELF_GAP)))
-          }
-          setPerShelf(count)
-        }
-        measure()
-        if (typeof ResizeObserver === 'undefined') return
-        const ro = new ResizeObserver(measure)
-        ro.observe(el)
-        return () => { try { ro.disconnect() } catch { /* noop */ } }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [layout.orientation, gridRef.current])
+      // NOTE: the shelf layout (横排/列排) is now a strict one-per-row /
+      // one-per-column arrangement derived directly from the pane count, so
+      // there is no per-shelf measurement to run. The grid box still exposes
+      // gridRef for the drag handlers and the resize affordance.
 
       const endDrag = () => {
         clearTimeout(dragTimer.current)
