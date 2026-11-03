@@ -637,10 +637,17 @@ window.__ModuleLoader__.load({
         // O(N×events) hot loop during streaming.
         let raf = 0
         let scheduled = false
+        // Latest `next` map + dirty flag, committed to state by the effect
+        // below. This is how the loop's result reaches React without calling
+        // setStatuses synchronously inside the rAF callback.
+        let statusNext = {}
+        let statusDirty = false
         const readAll = () => {
           scheduled = false
           const next = {}
           let changed = false
+          statusNext = next
+          statusDirty = false
           for (const id of layout.ids) {
             const pane = paneRefs[id]
             const face = pane?.ref?.binding?.session
@@ -713,6 +720,7 @@ window.__ModuleLoader__.load({
                   prev.promptAttempted !== next[id].promptAttempted || prev.error !== next[id].error ||
                   prev.pending !== next[id].pending) {
                 changed = true
+                statusDirty = true
               }
             } catch {
               /* binding not ready yet */
@@ -744,6 +752,15 @@ window.__ModuleLoader__.load({
         return () => { unsubs.forEach(u => u()) }
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [layout.ids.join(','), paneRefs])
+
+      // Commit the freshly-read statuses to React state (the loop above only
+      // builds `next`; this applies it when anything actually changed).
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      useEffect(() => {
+        if (!statusDirty) return
+        setStatuses(statusNext)
+        statusDirty = false
+      }, [statusDirty, statusNext])
 
       const disabled = useMemo(() => new Set(layout.ids), [layout.ids])
 
