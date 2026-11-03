@@ -127,7 +127,7 @@ window.__ModuleLoader__.load({
           // stays until every pane is fully mounted/rendered, then fades out.
           // Only ever shows once (never re-appears on subsequent add/remove).
           '@keyframes dshSplitSpin { to { transform: rotate(360deg) } }\n' +
-          '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 220ms ease; pointer-events: none }\n' +
+          '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 500ms ease; pointer-events: none }\n' +
           '.dshSplitLoading.done { opacity: 0 }\n' +
           '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n';
         document.head.appendChild(el)
@@ -427,12 +427,12 @@ window.__ModuleLoader__.load({
         const allMounted = layout.ids.every(id => mounted.has(id))
         if (allMounted && !loadingShown.current) {
           loadingShown.current = true
-          setShowLoading(false)
-          // Trigger the fade-out: add `done` (opacity 0) on the NEXT frame so
-          // the CSS transition plays, then unmount the overlay after 250ms so
-          // it doesn't linger invisible (and block pointer events).
-          requestAnimationFrame(() => setLoadingDone(true))
-          setTimeout(() => { setShowLoading(false); setLoadingDone(false) }, 250)
+          // Keep the overlay mounted but add `done` (opacity 0) so the CSS
+          // transition fades it out smoothly; unmount it after the transition
+          // (220ms) so it doesn't linger invisible. The fade is longer (500ms)
+          // so it reads as a deliberate dissolve, not an abrupt pop.
+          setLoadingDone(true)
+          setTimeout(() => { setShowLoading(false); setLoadingDone(false) }, 500)
         }
       }, [layout.ids.join(','), mounted.size])
 
