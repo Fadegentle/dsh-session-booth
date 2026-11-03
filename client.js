@@ -1161,13 +1161,22 @@ window.__ModuleLoader__.load({
         if (dragStart.current) { try { e.preventDefault() } catch { /* noop */ } }
         if (!draggingRef.current) return
         try { e.preventDefault() } catch { /* noop */ }
-        const over = document.elementFromPoint(e.clientX, e.clientY)
-        if (over) {
-          const paneEl = over.closest('[data-split-pane]')
-          if (paneEl && paneEl.__splitIndex !== undefined) {
-            setDragOver(paneEl.__splitIndex)
-          } else if (paneEl && paneEl.dataset.splitPane !== undefined) {
-            setDragOver(Number(paneEl.dataset.splitPane))
+        // The pointermove event fires on the pane div itself (it has
+        // onPointerMove={onDragMove(index)} in GridItem). currentTarget is
+        // the pane, so we can read its index directly — much more reliable
+        // than elementFromPoint, which can hit a button/input inside the
+        // pane and fail the closest() lookup.
+        const el = e.currentTarget
+        if (el && el.dataset && el.dataset.splitPane !== undefined) {
+          setDragOver(Number(el.dataset.splitPane))
+        } else {
+          // Fallback: hit-test in case the event bubbled from a child.
+          const over = document.elementFromPoint(e.clientX, e.clientY)
+          if (over) {
+            const paneEl = over.closest('[data-split-pane]')
+            if (paneEl && paneEl.dataset.splitPane !== undefined) {
+              setDragOver(Number(paneEl.dataset.splitPane))
+            }
           }
         }
       }
