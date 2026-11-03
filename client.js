@@ -1067,7 +1067,10 @@ window.__ModuleLoader__.load({
           sessionTitles: byId,
           sessionTitleOf,
           onJump: () => uiWorkspace.openSession(id),
-          onSwitch: (sessionId) => uiWorkspace.openSession(sessionId),
+          // In-place pane switch: clicking a session in the floating title's
+          // list swaps THIS window to that session (same grid slot, stays in
+          // the booth) instead of jumping to the editor via openSession.
+          onSwitch: (sessionId) => layout.replaceAt(index, sessionId),
           t,
           SessionProvider,
           mounted: mounted.has(id),
@@ -1462,6 +1465,19 @@ window.__ModuleLoader__.load({
             next.splice(at, 0, id)
             layout.ids = next; writeStoredIds(next); layout.emit()
           },
+          // In-place pane switch: swap the pane at `index` from its current
+          // session to `id`. The new id takes the SAME grid slot, so the
+          // window count and layout are unchanged — only which session this
+          // window is bound to changes. Used by the floating title's session
+          // list: clicking a session swaps THIS window to it (stays in the
+          // booth) instead of jumping to the editor (openSession).
+          replaceAt: (index, id) => {
+            const next = layout.ids.slice()
+            if (index < 0 || index >= next.length) return
+            if (next[index] === id) return
+            next[index] = id
+            layout.ids = next; writeStoredIds(next); layout.emit()
+          },
           // Cancel: mark configured so the picker never auto-reopens, but
           // keep ids empty (no layout persisted yet).
           dismiss: () => { layout.initialized = true; layout.emit() },
@@ -1536,6 +1552,7 @@ window.__ModuleLoader__.load({
                 remove: layout.remove,
                 addMissing: layout.addMissing,
                 addAt: layout.addAt,
+                replaceAt: layout.replaceAt,
                 setMode: layout.setMode,
                 dismiss: layout.dismiss,
               },
