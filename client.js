@@ -114,7 +114,22 @@ window.__ModuleLoader__.load({
           // consumes any leftover vertical space and pins the composer to the
           // pane bottom for both blank and populated sessions.
           '[data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
-          '[data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n';
+          '[data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
+          // Hover lift for the floating title/controls windows: raise the
+          // border + shadow slightly and brighten the foreground when the
+          // user hovers either the top-left title pill or the top-right
+          // "-+" control. Applies to the bordered floating boxes only.
+          '.dshSplitFloat { transition: border-color 120ms ease, box-shadow 120ms ease }\n' +
+          '.dshSplitFloat:hover { border-color: var(--dsh-accent, #4f8cff) !important; box-shadow: 0 3px 14px rgba(0,0,0,0.45) !important }\n' +
+          '.dshSplitFloat button { transition: background 120ms ease, color 120ms ease }\n' +
+          '.dshSplitFloat button:hover { background: color-mix(in srgb, var(--dsh-accent, #4f8cff) 18%, transparent) !important; color: var(--dsh-accent, #4f8cff) !important }\n' +
+          // Full-window loading overlay: a centered rotating spinner shown
+          // while the panes are still lazy-mounting, fading OUT (渐入 = the
+          // real UI fades in over it) once every pane is mounted.
+          '@keyframes dshSplitSpin { to { transform: rotate(360deg) } }\n' +
+          '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 220ms ease; pointer-events: none }\n' +
+          '.dshSplitLoading.done { opacity: 0 }\n' +
+          '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -665,7 +680,16 @@ window.__ModuleLoader__.load({
       const rows = grid.rows
       const placements = grid.placements
 
-      // Empty state (no panes yet): show a centered "add sessions" affordance.
+      // Empty state (no panes yet): if the user has configured a layout before
+      // and now removed every window, we return to the normal editor instead of
+      // showing the "add sessions" affordance (the parent SplitViewPanel calls
+      // ctx.layout.selectPanel(null) in that case). Only the FIRST visit (no
+      // persisted layout) shows the empty-state affordance.
+      if (layout.ids.length === 0 && layout.initialized) {
+        return h('div', {
+          style: { height: '100%', width: '100%' },
+        })
+      }
       if (layout.ids.length === 0) {
         return h('div', {
           style: {
@@ -740,14 +764,25 @@ window.__ModuleLoader__.load({
         setDragOver(null)
       }
 
+      // Loading overlay: shown until every pane is mounted (lazy-mount
+      // finishes). Fades out (渐入) once the last pane mounts. The grid is
+      // wrapped in a position:relative box so the absolute overlay covers it.
+      const allMounted = layout.ids.length > 0 && layout.ids.every(id => mounted.has(id))
+      const loadingDone = allMounted || layout.ids.length === 0
+
       return h('div', {
         style: {
-          display: 'grid',
-          gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gridTemplateRows: `repeat(${rows}, 1fr)`,
-          height: '100%', width: '100%', gap: 1, background: 'var(--dsh-border, #333)',
+          position: 'relative', height: '100%', width: '100%',
         },
       },
+        h('div', {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gridTemplateRows: `repeat(${rows}, 1fr)`,
+            height: '100%', width: '100%', gap: 1, background: 'var(--dsh-border, #333)',
+          },
+        },
         layout.ids.map((id, index) => h(GridItem, {
           key: id,
           index,
@@ -831,6 +866,16 @@ window.__ModuleLoader__.load({
               setPicker(null)
             },
           })),
+        ),
+        // Full-window loading overlay. `done` fades it out (opacity -> 0)
+        // once every pane is mounted; pointer-events:none keeps it from
+        // blocking clicks on the (already rendered) panes underneath.
+        h('div', {
+          className: 'dshSplitLoading' + (loadingDone ? ' done' : ''),
+          style: { display: layout.ids.length === 0 ? 'none' : undefined },
+        },
+          h('div', { className: 'spinner' }),
+        ),
       )
     }
 
@@ -906,6 +951,7 @@ window.__ModuleLoader__.load({
           // control, with the session name as a GRAY chip on the right. Clicking
           // the gray session chip opens a vertical list at the split boundary.
           h('div', {
+            className: 'dshSplitFloat',
             style: {
               display: 'flex', alignItems: 'center', gap: 4, minWidth: 0,
               height: 26, position: 'relative',
@@ -987,6 +1033,7 @@ window.__ModuleLoader__.load({
             h(StatusDot, { status }),
             // Remove/add floating window.
             h('div', {
+              className: 'dshSplitFloat',
               style: {
                 display: 'flex', alignItems: 'center', gap: 6,
                 background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
@@ -1144,6 +1191,14 @@ window.__ModuleLoader__.load({
             const [ids, setIds] = useState(layout.ids)
             useEffect(() => layout.subscribe(setIds), [])
             const { SessionProvider, renderFactorySlot } = props
+            // Zero windows -> return to the normal editor (the default
+            // "conversation" main panel). selectPanel(null) is the same call
+            // the workspace service uses to clear the main view.
+            useEffect(() => {
+              if (ids.length === 0 && layout.initialized) {
+                try { ctx.layout.selectPanel(null) } catch { /* not registered yet */ }
+              }
+            }, [ids.length, layout.initialized])
             return h(SplitPanel, {
               sessions: ctx.sessions,
               workspaces: ctx.workspaces,
