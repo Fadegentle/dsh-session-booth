@@ -420,13 +420,19 @@ window.__ModuleLoader__.load({
       // forever (a `loadingShown` ref prevents it from re-appearing on any
       // subsequent add/remove, which was the "stuck on add" bug).
       const [showLoading, setShowLoading] = useState(true)
+      const [loadingDone, setLoadingDone] = useState(false)
       const loadingShown = useRef(false)
       useEffect(() => {
-        if (layout.ids.length === 0) { setShowLoading(true); loadingShown.current = false; return }
+        if (layout.ids.length === 0) { setShowLoading(true); setLoadingDone(false); loadingShown.current = false; return }
         const allMounted = layout.ids.every(id => mounted.has(id))
         if (allMounted && !loadingShown.current) {
           loadingShown.current = true
           setShowLoading(false)
+          // Trigger the fade-out: add `done` (opacity 0) on the NEXT frame so
+          // the CSS transition plays, then unmount the overlay after 250ms so
+          // it doesn't linger invisible (and block pointer events).
+          requestAnimationFrame(() => setLoadingDone(true))
+          setTimeout(() => { setShowLoading(false); setLoadingDone(false) }, 250)
         }
       }, [layout.ids.join(','), mounted.size])
 
@@ -910,7 +916,7 @@ window.__ModuleLoader__.load({
         // from blocking the already-rendered panes underneath.
         showLoading && layout.ids.length > 0
           ? h('div', {
-            className: 'dshSplitLoading',
+            className: 'dshSplitLoading' + (loadingDone ? ' done' : ''),
           },
             h('div', { className: 'spinner' }),
           )
