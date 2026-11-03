@@ -19,6 +19,7 @@ window.__ModuleLoader__.load({
     try { createPortal = require('react-dom').createPortal } catch { /* no react-dom */ }
 
     const STORAGE_KEY = 'dsh.splitSessions.layout'
+    const LAYOUT_MODE_KEY = 'dsh.splitSessions.layoutMode'
 
     // ------------------------------------------- localized dictionaries
 
@@ -45,6 +46,8 @@ window.__ModuleLoader__.load({
       'split.switchSession': 'Switch to another session in this workspace',
       'split.editTitle': 'Edit session booth',
       'split.confirm': 'Confirm',
+      'split.layoutGrid': 'Grid layout',
+      'split.layoutColumns': 'Column layout',
     }
 
     const zh = {
@@ -68,6 +71,8 @@ window.__ModuleLoader__.load({
       'split.switchSession': '切换到该工作区的其他会话',
       'split.editTitle': '编辑会话廊',
       'split.confirm': '确认',
+      'split.layoutGrid': '网格布局',
+      'split.layoutColumns': '分栏布局',
     }
 
     // ------------------------------------------------------------------ utils
@@ -90,6 +95,32 @@ window.__ModuleLoader__.load({
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
       } catch {
         /* localStorage unavailable — layout just won't persist. */
+      }
+    }
+
+    // Layout mode: 'grid' (balanced staircase, default) or 'columns' (1 row of
+    // N equal columns, for side-by-side reading). Persisted independently so
+    // the user's preferred arrangement survives a reload.
+    const LAYOUT_MODES = ['grid', 'columns']
+
+    /** Read the persisted layout mode; never throws. Defaults to 'grid'. */
+    function readStoredMode() {
+      try {
+        const raw = window.localStorage.getItem(LAYOUT_MODE_KEY)
+        if (raw === null) return 'grid'
+        const parsed = JSON.parse(raw)
+        if (LAYOUT_MODES.includes(parsed)) return parsed
+        return 'grid'
+      } catch {
+        return 'grid'
+      }
+    }
+
+    function writeStoredMode(mode) {
+      try {
+        window.localStorage.setItem(LAYOUT_MODE_KEY, JSON.stringify(mode))
+      } catch {
+        /* localStorage unavailable — mode just won't persist. */
       }
     }
 
@@ -179,6 +210,19 @@ window.__ModuleLoader__.load({
       },
         h('line', { x1: 4, y1: 4, x2: 12, y2: 12 }),
         h('line', { x1: 12, y1: 4, x2: 4, y2: 12 }),
+      )
+    }
+
+    // Column-split toggle icon: two vertical panes (used when the layout is in
+    // 'grid' mode to offer switching to 'columns').
+    function ColumnsIcon({ size = 12 }) {
+      return h('svg', {
+        width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        'aria-hidden': 'true',
+      },
+        h('line', { x1: 5, y1: 3, x2: 5, y2: 13 }),
+        h('line', { x1: 11, y1: 3, x2: 11, y2: 13 }),
       )
     }
 
@@ -397,6 +441,23 @@ window.__ModuleLoader__.load({
         col = 0
       }
       return { rows, totalCols, placements }
+    }
+
+    // Column-split layout: all panes in a single horizontal row, each 1/N
+    // wide. Returns the same { rows, totalCols, placements } shape as
+    // computeStaircase so the caller can switch modes without special-casing.
+    function computeColumns(n) {
+      const placements = []
+      for (let i = 0; i < n; i++) placements.push({ row: 0, col: i, colSpan: 1 })
+      return { rows: 1, totalCols: n, placements }
+    }
+
+    // Mode-aware placement: 'grid' -> balanced staircase, 'columns' -> a
+    // single horizontal row. A tiny n<=1 case collapses to one pane either way.
+    function computeLayout(n, mode) {
+      if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
+      if (mode === 'columns') return computeColumns(n)
+      return computeStaircase(n)
     }
 
     function SplitPanel(props) {
@@ -727,13 +788,10 @@ window.__ModuleLoader__.load({
         return Math.min(px, 480) // hard cap so it never overflows a pane
       }, [layout.ids, wsBySession, wsDisplay])
 
-      // Responsive grid: balance columns/rows by session count.
-      // cols = ceil(sqrt(N)), rows = ceil(N/cols). This keeps the grid as
-      // square as possible so removing/adding sessions reflows the panes
-      // instead of overflowing a fixed 2x2 box.
-      // Responsive grid: balanced staircase so ODD counts never leave an
-      // empty cell. 5 panes -> 2 on top + 3 on bottom (上2下3).
-      const grid = computeStaircase(layout.ids.length)
+      // Mode-aware layout: 'grid' -> balanced staircase (no empty cells, odd
+      // counts like 5 -> 上2下3), 'columns' -> a single horizontal row of N
+      // equal panes for side-by-side reading.
+      const grid = computeLayout(layout.ids.length, layout.mode || 'grid')
       const cols = grid.totalCols
       const rows = grid.rows
       const placements = grid.placements
@@ -827,6 +885,32 @@ window.__ModuleLoader__.load({
           position: 'relative', height: '100%', width: '100%',
         },
       },
+        // Global layout-mode toggle: switches between the balanced grid and a
+        // single horizontal row (column split). It floats over the grid's
+        // top-right corner so it never shifts the pane layout.
+        layout.ids.length > 1
+          ? h('div', {
+            className: 'dshSplitFloat',
+            style: {
+              position: 'absolute', top: 8, right: 8, zIndex: 20,
+              display: 'flex', alignItems: 'center', gap: 4,
+              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
+              borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            },
+          },
+            h('button', {
+              type: 'button',
+              title: layout.mode === 'grid' ? t('split.layoutColumns') : t('split.layoutGrid'),
+              'aria-label': layout.mode === 'grid' ? t('split.layoutColumns') : t('split.layoutGrid'),
+              onClick: () => layout.setMode(layout.mode === 'grid' ? 'columns' : 'grid'),
+              style: cornerBtnStyle(),
+            },
+              layout.mode === 'grid'
+                ? h(ColumnsIcon, { size: 12 })
+                : h(GridIcon, { size: 12 }),
+            ),
+          )
+          : null,
         h('div', {
           style: {
             display: 'grid',
@@ -1249,6 +1333,12 @@ window.__ModuleLoader__.load({
           // Cancel: mark configured so the picker never auto-reopens, but
           // keep ids empty (no layout persisted yet).
           dismiss: () => { layout.initialized = true; layout.emit() },
+          setMode: (mode) => {
+            if (!LAYOUT_MODES.includes(mode)) return
+            layout.mode = mode
+            writeStoredMode(mode)
+            layout.emit()
+          },
           subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn) },
           emit() { for (const fn of this.listeners) fn(this.ids) },
         }
@@ -1256,6 +1346,7 @@ window.__ModuleLoader__.load({
         const stored = readStoredIds()
         layout.initialized = stored !== null
         if (stored !== null) layout.ids = stored
+        layout.mode = readStoredMode()
 
         // ---- Register the sidebar entry ----
         ctx.slots.inject('sidebar', function* () {
@@ -1285,7 +1376,11 @@ window.__ModuleLoader__.load({
             },
           }, function SplitViewPanel(props) {
             const [ids, setIds] = useState(layout.ids)
-            useEffect(() => layout.subscribe(setIds), [])
+            const [mode, setMode] = useState(layout.mode)
+            useEffect(() => layout.subscribe((next) => {
+              setIds(next)
+              setMode(layout.mode)
+            }), [])
             const { SessionProvider, renderFactorySlot } = props
             // Zero windows -> return to the normal editor (the default
             // "conversation" main panel). selectPanel(null) is the same call
@@ -1301,10 +1396,12 @@ window.__ModuleLoader__.load({
               layout: {
                 ids,
                 initialized: layout.initialized,
+                mode,
                 set: layout.set,
                 remove: layout.remove,
                 addMissing: layout.addMissing,
                 addAt: layout.addAt,
+                setMode: layout.setMode,
                 dismiss: layout.dismiss,
               },
               t,
