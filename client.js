@@ -210,6 +210,45 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // Error boundary around the whole booth panel. Without this, any throw
+    // inside SplitPanel (or a pane's conversation content) unmounts React to a
+    // blank panel — the reported "黑屏". This surfaces the error text plus a
+    // way back to the editor so a failure is diagnosable instead of a silent
+    // black screen.
+    class BoothErrorBoundary extends React.Component {
+      constructor(props) { super(props); this.state = { error: null } }
+      static getDerivedStateFromError(error) { return { error } }
+      componentDidCatch(error, info) { console.error('[session-booth] render error:', error, info) }
+      render() {
+        if (!this.state.error) return this.props.children
+        const err = this.state.error
+        const msg = (err && (err.message || String(err))) || 'unknown error'
+        return h('div', {
+          style: {
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            gap: 12, height: '100%', width: '100%', padding: 24,
+            background: 'var(--dsh-bg, #1e1e1e)', color: 'var(--dsh-fg, #eee)',
+          },
+        },
+          h('div', { style: { fontSize: 15, fontWeight: 600, color: '#e5484d' } },
+            '会话廊渲染出错 / Booth render error'),
+          h('pre', {
+            style: {
+              maxWidth: '80%', maxHeight: '40%', overflow: 'auto', whiteSpace: 'pre-wrap',
+              fontSize: 12, opacity: 0.75, background: 'rgba(0,0,0,0.25)', padding: 10, borderRadius: 8,
+            },
+          }, msg),
+          h('button', {
+            onClick: () => { try { ctx.layout.selectPanel(null) } catch { /* noop */ } },
+            style: {
+              padding: '6px 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)',
+              background: 'transparent', color: 'var(--dsh-fg, #eee)',
+            },
+          }, '返回编辑器 / Back to editor'),
+        )
+      }
+    }
+
     function CloseIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
@@ -1473,7 +1512,10 @@ window.__ModuleLoader__.load({
                 try { ctx.layout.selectPanel(null) } catch { /* not registered yet */ }
               }
             }, [ids.length, layout.initialized])
-            return h(SplitPanel, {
+            // Wrap in the error boundary so any render throw inside SplitPanel
+            // or a pane shows readable text + a way back instead of a blank
+            // black panel.
+            return h(BoothErrorBoundary, null, h(SplitPanel, {
               sessions: ctx.sessions,
               workspaces: ctx.workspaces,
               layout: {
@@ -1509,7 +1551,7 @@ window.__ModuleLoader__.load({
                   t: actions.t,
                 })
               },
-            })
+            }))
           })
         })
 
