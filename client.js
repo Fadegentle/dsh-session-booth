@@ -115,21 +115,14 @@ window.__ModuleLoader__.load({
           // pane bottom for both blank and populated sessions.
           '[data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
           '[data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
-          // Hover lift for the floating title/controls windows: raise the
-          // border + shadow slightly and brighten the foreground when the
-          // user hovers either the top-left title pill or the top-right
-          // "-+" control. Applies to the bordered floating boxes only.
-          '.dshSplitFloat { transition: border-color 120ms ease, box-shadow 120ms ease }\n' +
-          '.dshSplitFloat:hover { border-color: var(--dsh-accent, #4f8cff) !important; box-shadow: 0 3px 14px rgba(0,0,0,0.45) !important }\n' +
+          // Per-button hover: each button inside the floating windows greys
+          // out independently on hover (black -> gray). No box-level hover.
           '.dshSplitFloat button { transition: background 120ms ease, color 120ms ease }\n' +
-          '.dshSplitFloat button:hover { background: color-mix(in srgb, var(--dsh-accent, #4f8cff) 18%, transparent) !important; color: var(--dsh-accent, #4f8cff) !important }\n' +
-          // Full-window loading overlay: a centered rotating spinner shown
-          // while the panes are still lazy-mounting, fading OUT (渐入 = the
-          // real UI fades in over it) once every pane is mounted.
-          '@keyframes dshSplitSpin { to { transform: rotate(360deg) } }\n' +
-          '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 220ms ease; pointer-events: none }\n' +
-          '.dshSplitLoading.done { opacity: 0 }\n' +
-          '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n';
+          '.dshSplitFloat button:hover { background: rgba(255,255,255,0.12) !important }\n' +
+          // Card fade in/out (渐入渐出): session boxes animate opacity when
+          // added (fade in) and when removed (fade out over 200ms).
+          '@keyframes dshSplitFadeIn { from { opacity: 0 } to { opacity: 1 } }\n' +
+          '@keyframes dshSplitFadeOut { from { opacity: 1 } to { opacity: 0 } }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -424,6 +417,32 @@ window.__ModuleLoader__.load({
       const dragTimer = useRef(null)
       const dragStart = useRef(null)
       const draggingRef = useRef(false)
+
+      // Card fade-out: when a pane is removed we animate its card's opacity to
+      // 0 over 200ms, then actually drop it from the layout so the grid
+      // reflows. `removing` holds the ids currently in their fade-out window.
+      const [removing, setRemoving] = useState(() => new Set())
+      const removingTimers = useRef(new Map())
+      const requestRemove = (id) => {
+        if (removing.has(id)) return
+        setRemoving(prev => new Set(prev).add(id))
+        const timer = setTimeout(() => {
+          layout.remove(id)
+          setRemoving(prev => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+          removingTimers.current.delete(id)
+        }, 220)
+        removingTimers.current.set(id, timer)
+      }
+      // Clear any pending fade-out timers on unmount.
+      useEffect(() => () => {
+        for (const timer of removingTimers.current.values()) clearTimeout(timer)
+        removingTimers.current.clear()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [])
 
       // Reset any in-flight drag when the layout changes under us.
       useEffect(() => {
@@ -764,12 +783,6 @@ window.__ModuleLoader__.load({
         setDragOver(null)
       }
 
-      // Loading overlay: shown until every pane is mounted (lazy-mount
-      // finishes). Fades out (渐入) once the last pane mounts. The grid is
-      // wrapped in a position:relative box so the absolute overlay covers it.
-      const allMounted = layout.ids.length > 0 && layout.ids.every(id => mounted.has(id))
-      const loadingDone = allMounted || layout.ids.length === 0
-
       return h('div', {
         style: {
           position: 'relative', height: '100%', width: '100%',
@@ -780,7 +793,8 @@ window.__ModuleLoader__.load({
             display: 'grid',
             gridTemplateColumns: `repeat(${cols}, 1fr)`,
             gridTemplateRows: `repeat(${rows}, 1fr)`,
-            height: '100%', width: '100%', gap: 1, background: 'var(--dsh-border, #333)',
+            height: '100%', width: '100%', gap: 8, padding: 8, background: 'var(--dsh-bg, #1e1e1e)',
+            boxSizing: 'border-box',
           },
         },
         layout.ids.map((id, index) => h(GridItem, {
@@ -791,7 +805,8 @@ window.__ModuleLoader__.load({
           pane: paneRefs[id],
           renderPane,
           onAdd: () => setPicker({ mode: 'add', exclude: disabled }),
-          onRemove: () => layout.remove(id),
+          onRemove: () => requestRemove(id),
+          removing: removing.has(id),
           status: statuses[id],
           title: titles[id] || byId[id]?.displayTitle || byId[id]?.title || '',
           pillWidth,
@@ -867,15 +882,6 @@ window.__ModuleLoader__.load({
             },
           })),
         ),
-        // Full-window loading overlay. `done` fades it out (opacity -> 0)
-        // once every pane is mounted; pointer-events:none keeps it from
-        // blocking clicks on the (already rendered) panes underneath.
-        h('div', {
-          className: 'dshSplitLoading' + (loadingDone ? ' done' : ''),
-          style: { display: layout.ids.length === 0 ? 'none' : undefined },
-        },
-          h('div', { className: 'spinner' }),
-        ),
       )
     }
 
@@ -886,7 +892,7 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
       return h('div', {
         'data-split-pane': index,
         onPointerDown: onDragStart,
@@ -894,10 +900,12 @@ window.__ModuleLoader__.load({
         onPointerUp: onDragEnd,
         onPointerLeave: onDragCancel,
         style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0, gridColumn: placement ? `span ${placement.colSpan}` : undefined, gridRow: placement ? placement.row + 1 : undefined,
-          transition: 'box-shadow 120ms ease, transform 120ms ease',
-          boxShadow: dragIndex !== null && dragIndex === index ? '0 12px 32px rgba(0,0,0,0.6)' : 'none',
+          borderRadius: 10, border: '1px solid var(--dsh-border, #333)',
+          transition: 'box-shadow 120ms ease, transform 120ms ease, opacity 200ms ease',
+          boxShadow: dragIndex !== null && dragIndex === index ? '0 12px 32px rgba(0,0,0,0.6)' : '0 2px 8px rgba(0,0,0,0.2)',
           zIndex: dragIndex !== null && dragIndex === index ? 30 : undefined,
-          opacity: dragIndex !== null && dragOver === index && dragIndex !== index ? 0.6 : 1 },
+          opacity: dragIndex !== null && dragOver === index && dragIndex !== index ? 0.6 : (removing ? 0 : 1),
+          animation: removing ? 'dshSplitFadeOut 200ms ease forwards' : 'dshSplitFadeIn 200ms ease' },
       },
         mounted && pane?.ref
           ? h(SessionProvider, { session: pane.ref },
