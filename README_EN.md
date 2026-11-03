@@ -18,12 +18,14 @@
 | 🎯 First-click multi-select | A session picker lets you check multiple sessions |
 | 🔲 Split layout | Auto-balanced staircase grid (no empty cell for odd counts, e.g. 5 → 2 top + 3 bottom) |
 | 📐 Column layout | One-click toggle to a single row of N equal columns (grid / column switch) |
-| 🖱️ Drag to reorder | Long-press a pane's empty area to lift it, then drag to a target to reorder (like desktop icons) |
+| 🏗️ Rows / Columns | Shelf-style layout: rows = one pane per row, columns = one pane per column; click icon to toggle instantly |
+| 📏 Pane resize | Drag handles on the right/bottom edge of each pane to resize; auto-normalized and persisted |
+| 🖱️ Drag to reorder | Long-press a pane's empty area to lift it, then drag to a target to reorder (event target used directly for reliability) |
 | ➕ Targeted add | The "＋" on a pane inserts the new window right after that pane |
 | ⚙️ Per-pane controls | Top-right: status dot, remove (−), add (+) |
 | 🏷️ Title bar | "Workspace / session" split: click the workspace name to jump to the current session, click the session name to switch sessions in that workspace |
 | 📜 Live scrolling | Scrolls to bottom and follows streaming output; pauses while an input is focused |
-| 🟢 Status dot | done=green, running=green pulse, pending=yellow, error=red |
+| 🟢 Status dot | done=green, running=green pulse (even after a failed last turn — running retry shows green), pending=yellow, error=red |
 | 💾 Persistence | Layout and layout mode stored in `localStorage`, restored after a DSH restart |
 | 🚀 Lazy mounting | Each pane mounts on a staggered animation frame to avoid jank with many sessions |
 | ⏳ Loading animation | A unified loading overlay on first entry, fades out when rendering completes |
@@ -54,16 +56,17 @@ Place the entire `session-booth/` directory into DSH's plugin directory, then re
 2. On first entry a picker appears: check the sessions you want, then click **Confirm**.
 3. In each pane's title bar: click the "Workspace" name (left) to jump to the current session; click the "session" name to switch sessions in that workspace.
 4. In each pane's top-right corner: **+** adds more sessions, **−** removes that session.
-5. Use the 📐 button at the grid's top-right to switch between **Grid layout / Column layout**.
-6. Long-press a pane's empty area to lift it, then drag to reorder.
-7. The split layout is restored automatically after a DSH restart.
+5. Use the 🏗️ / 📐 buttons at the grid's top-right to toggle **Rows / Columns / Grid** layout.
+6. Drag the translucent handles on each pane's right/bottom edge to resize it.
+7. Long-press a pane's empty area to lift it, then drag to reorder.
+8. The split layout is restored automatically after a DSH restart.
 
 ## 🎨 Status dot colors
 
 | Status | Color / animation |
 | --- | --- |
 | ✅ Done | solid green `#30a46c` |
-| 🔄 Running | green fade in/out pulse |
+| 🔄 Running | green fade in/out pulse (also shown when retrying after a failed last turn) |
 | 🟡 Pending (no first turn yet) | yellow `#f5a623` |
 | 🔴 Unexpected termination / error | red `#e5484d` |
 
@@ -88,6 +91,14 @@ session-booth/
 ```
 
 ## 📝 Changelog
+
+### v0.3.0
+
+- 🏗️ Added **Rows / Columns** shelf layout (rows = one pane per row, columns = one pane per column), toggled instantly from the grid toolbar and persisted.
+- 📏 Added **pane resizing**: drag the translucent handles on each pane's right/bottom edge; weights are auto-normalized and stored in `localStorage`.
+- 🖱️ Drag-to-reorder now reads the pane index from the event's `currentTarget` instead of a `elementFromPoint` hit-test, making it much more reliable.
+- 🟢 Status dot rule refined: a **running retry after a failed last turn now pulses green** instead of red; red only shows when the session is settled and the latest turn failed.
+- 🟡 The pending (yellow) dot is aligned with DSH's native `blank / awaitingFirstTurn` logic so it no longer gets missed.
 
 ### v0.2.0
 
