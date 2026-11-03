@@ -80,7 +80,7 @@ session-booth/
 ├── client.js            # 客户端逻辑（注册槽位、分屏网格、状态点、拖拽、布局模式）
 ├── index.js             # 宿主 no-op
 ├── cordis.patch.yml     # 插件插入配置
-├── package.json         # @local/session-booth 清单
+├── package.json         # dsh-session-booth 清单
 ├── icon.svg             # 24×24 宫格图标
 └── src/locale/
     ├── zh.json          # 中文本地化

@@ -7,7 +7,7 @@
  * persisted in localStorage so the split view reopens on the next launch.
  */
 window.__ModuleLoader__.load({
-  id: '@local/session-booth',
+  id: 'dsh-session-booth',
   factory(require) {
     const React = require('react')
     const h = React.createElement

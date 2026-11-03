@@ -80,7 +80,7 @@ session-booth/
 ├── client.js            # client logic (register slot, split grid, status dot, drag, layout mode)
 ├── index.js             # host no-op
 ├── cordis.patch.yml     # plugin insertion config
-├── package.json         # @local/session-booth manifest
+├── package.json         # dsh-session-booth manifest
 ├── icon.svg             # 24×24 grid icon
 └── src/locale/
     ├── zh.json          # Chinese localization

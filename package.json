@@ -1,15 +1,36 @@
 {
-  "name": "@local/session-booth",
+  "name": "dsh-session-booth",
   "type": "module",
   "version": "0.1.0",
   "main": "./index.js",
   "description": "Session Booth: a persistent multi-session split view in the DSH main window.",
+  "icon": "./icon.svg",
+  "license": "MIT",
+  "author": "FdcWinPC",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "session",
+    "split-view",
+    "multi-session",
+    "sidebar"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FdcWinPC/dsh-session-booth.git"
+  },
+  "homepage": "https://github.com/FdcWinPC/dsh-session-booth#readme",
+  "bugs": {
+    "url": "https://github.com/FdcWinPC/dsh-session-booth/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./index.js": "./index.js",
     "./client": "./client.js",
     "./locale/*.json": "./src/locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",
@@ -19,6 +40,9 @@
     "cordis.patch.yml"
   ],
   "dsh": {
+    "engines": {
+      "dsh": ">=0.2.1-rc.2 <0.3.0-0"
+    },
     "bundle": {
       "patch": "./cordis.patch.yml"
     },
@@ -30,5 +54,9 @@
         "@deepseek-ai/dsh-client-ui-sidebar"
       ]
     }
+  },
+  "scripts": {
+    "check": "node --check index.js && node --check client.js",
+    "pack": "npm pack --dry-run"
   }
 }
