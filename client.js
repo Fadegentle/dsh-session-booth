@@ -311,6 +311,21 @@ window.__ModuleLoader__.load({
       )
     }
 
+    // Long-press hook (pointer-based, works for mouse + touch). `start`
+    // arms a timer that fires `onLongPress` after `delay` ms; `cancel`
+    // clears it; `didFire` reports whether the long-press already fired
+    // so the caller can suppress the trailing click.
+    function useLongPress(onLongPress, delay = 500) {
+      const timerRef = useRef(null)
+      const firedRef = useRef(false)
+      const clear = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null } }
+      const start = () => { clear(); firedRef.current = false; timerRef.current = setTimeout(() => { timerRef.current = null; firedRef.current = true; onLongPress() }, delay) }
+      const cancel = () => clear()
+      const didFire = () => firedRef.current
+      useEffect(() => clear, [])
+      return { start, cancel, didFire }
+    }
+
     // Bookshelf glyph: two horizontal shelves (used to switch to the 横排
     // / shelf layout). Reads as "rows stacked vertically".
     function ShelfIcon({ size = 12 }) {
