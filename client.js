@@ -683,7 +683,14 @@ window.__ModuleLoader__.load({
                 running: s.running,
                 blank: s.blank,
                 promptAttempted: s.promptAttempted,
-                error: !!(s.lastAgentError || s.openError || s.promptError || (s.running ? false : turnFailed)),
+                // Red for ANY unacknowledged turn failure. We do NOT suppress
+                // this while the session is running: a session that reported
+                // "处理失败 / 本轮运行失败" stays red until a LATER turn ends
+                // successfully (turnFailed becomes false again when the latest
+                // turn/end carries a non-failure reason). This matches the user
+                // expectation that a failed round shows red even if a retry or
+                // a new turn has started.
+                error: !!(s.lastAgentError || s.openError || s.promptError || turnFailed),
               }
               const prev = statusesRef.current[id]
               if (!prev || prev.running !== next[id].running || prev.blank !== next[id].blank ||
