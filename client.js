@@ -21,6 +21,7 @@ window.__ModuleLoader__.load({
     const STORAGE_KEY = 'dsh.splitSessions.layout'
     const LAYOUT_MODE_KEY = 'dsh.splitSessions.layoutMode'
     const ORIENTATION_KEY = 'dsh.splitSessions.orientation'
+    const SIZES_KEY = 'dsh.splitSessions.sizes'
 
     // ------------------------------------------- localized dictionaries
 
@@ -182,6 +183,29 @@ window.__ModuleLoader__.load({
         window.localStorage.setItem(ORIENTATION_KEY, JSON.stringify(o))
       } catch {
         /* localStorage unavailable — orientation just won't persist. */
+      }
+    }
+
+    // Per-track flex weights {cols:[],rows:[]} along each grid axis,
+    // normalized to sum 1. Grid renders `repeat(n, ${arr.map(f=>f+"fr")})`
+    // when present, else 1fr. Persisted so a resized layout survives reload.
+    function readStoredSizes() {
+      try {
+        const raw = window.localStorage.getItem(SIZES_KEY)
+        if (raw === null) return null
+        const p = JSON.parse(raw)
+        if (p && Array.isArray(p.cols) && Array.isArray(p.rows)) return p
+        return null
+      } catch {
+        return null
+      }
+    }
+
+    function writeStoredSizes(sizes) {
+      try {
+        window.localStorage.setItem(SIZES_KEY, JSON.stringify(sizes))
+      } catch {
+        /* localStorage unavailable — sizes just won't persist. */
       }
     }
 
@@ -1149,6 +1173,75 @@ window.__ModuleLoader__.load({
       }
 
       const gridRef = useRef(null)
+
+      // --- Resize: per-track flex weights derived from layout.sizes ---
+      // colOf/rowOf: derive col/row position from placements (grid) or index
+      // (shelf: rows→row=index col=0; cols→col=index row=0).
+      const colOf = (i) => shelf ? (layout.orientation === "cols" ? i : 0) : ((placements[i] || {col: 0}).col)
+      const rowOf = (i) => shelf ? (layout.orientation === "rows" ? i : 0) : ((placements[i] || {row: 0}).row)
+      const clampSizes = (arr, n, fb) => {
+        if (!Array.isArray(arr)) return Array(n).fill(fb)
+        const out = Array(n)
+        for (let i = 0; i < n; i++) {
+          const v = arr[i]
+          out[i] = (typeof v === 'number' && v > 0) ? v : fb
+        }
+        const sum = out.reduce((a, b) => a + b, 0) || 1
+        return out.map(v => v / sum)
+      }
+      const colSizes = clampSizes(layout.sizes && layout.sizes.cols, cols, 1)
+      const rowSizes = clampSizes(layout.sizes && layout.sizes.rows, rows, 1)
+      const [resizing, setResizing] = useState(null)
+      const resizeRef = useRef(null)
+      const startResize = (axis, track) => (e) => {
+        if (e.button !== 0) return
+        e.preventDefault(); e.stopPropagation()
+        const gridEl = gridRef.current
+        if (!gridEl) return
+        const rect = gridEl.getBoundingClientRect()
+        const n = axis === 'col' ? cols : rows
+        const sizesNow = axis === 'col' ? colSizes.slice() : rowSizes.slice()
+        const axisPx = axis === 'col' ? rect.width : rect.height
+        resizeRef.current = { axis, track, startPx: axis === 'col' ? e.clientX : e.clientY, sizesNow, axisPx }
+        setResizing({ axis, track })
+        const onMove = (ev) => {
+          const rz = resizeRef.current
+          if (!rz) return
+          const cur = axis === 'col' ? ev.clientX : ev.clientY
+          const delta = (cur - rz.startPx) / (rz.axisPx || 1)
+          const next = rz.sizesNow.slice()
+          const t = rz.track
+          const nb = t + 1
+          if (nb < next.length) {
+            const low = 0.08
+            let d = delta
+            const maxD = (next[t] - low)
+            const minD = -(next[nb] - low)
+            d = Math.max(minD, Math.min(maxD, d))
+            next[t] += d
+            next[nb] -= d
+          } else if (t - 1 >= 0) {
+            const low = 0.08
+            const prev = t - 1
+            let d = delta
+            d = Math.max(-(next[prev] - low), Math.min((next[t] - low), d))
+            next[prev] -= d
+            next[t] += d
+          }
+          const sum = next.reduce((a, b) => a + b, 0) || 1
+          const norm = next.map(v => v / sum)
+          if (axis === 'col') layout.setSizes({ cols: norm, rows: rowSizes })
+          else layout.setSizes({ cols: colSizes, rows: norm })
+        }
+        const onUp = () => {
+          document.removeEventListener('pointermove', onMove)
+          document.removeEventListener('pointerup', onUp)
+          resizeRef.current = null
+          setResizing(null)
+        }
+        document.addEventListener('pointermove', onMove)
+        document.addEventListener('pointerup', onUp)
+      }
       // NOTE: the shelf layout (横排/列排) is now a strict one-per-row /
       // one-per-column arrangement derived directly from the pane count, so
       // there is no per-shelf measurement to run. The grid box still exposes
@@ -1260,8 +1353,8 @@ window.__ModuleLoader__.load({
           ref: gridRef,
           style: {
             display: 'grid',
-            gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : `repeat(${cols}, 1fr)`,
-            gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : `repeat(${rows}, 1fr)`,
+            gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : `repeat(${cols}, ${colSizes.map(f => f + 'fr').join(' ')})`,
+            gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : `repeat(${rows}, ${rowSizes.map(f => f + 'fr').join(' ')})`,
             // Shelf wrap: 'rows' stacks shelves vertically (new shelf when a
             // pane no longer fits the min width); 'cols' fills a horizontal
             // band (new column when a pane no longer fits the min height).
@@ -1306,6 +1399,13 @@ window.__ModuleLoader__.load({
           onDragMove: onDragMove(index),
           onDragEnd: endDrag,
           onDragCancel: cancelDragPress,
+          resize: {
+            cols, rows, index, shelf, orientation: layout.orientation,
+            col: colOf(index), row: rowOf(index),
+            resizing,
+            startCol: startResize('col', colOf(index)),
+            startRow: startResize('row', rowOf(index)),
+          },
 
           empty: t('split.pickerEmpty'),
         })),
@@ -1394,7 +1494,7 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel, resize }) {
       return h('div', {
         'data-split-pane': index,
         onPointerDown: onDragStart,
@@ -1428,6 +1528,31 @@ window.__ModuleLoader__.load({
             ),
           )
           : h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: 12, opacity: 0.5 } }, empty),
+        resize && resize.cols > 0 && (() => {
+          const _rz = resize
+          const rCol = _rz.col
+          const rRow = _rz.row
+          const showV = _rz.shelf ? (_rz.orientation === "cols" && rCol < _rz.cols - 1) : (rCol < _rz.cols - 1)
+          const showH = _rz.shelf ? (_rz.orientation === "rows" && rRow < _rz.rows - 1) : (rRow < _rz.rows - 1)
+          const handles = []
+          if (showV) handles.push(h("div", {
+            key: 'rv',
+            style: { position: "absolute", right: -2, top: 4, bottom: 4, width: 6, cursor: "ew-resize", zIndex: 40, borderRadius: 3, background: _rz.resizing && _rz.resizing.axis === "col" ? "rgba(79,140,255,0.5)" : "transparent" },
+            onMouseEnter: (e) => { e.currentTarget.style.background = "rgba(79,140,255,0.3)" },
+            onMouseLeave: (e) => { if (!(_rz.resizing && _rz.resizing.axis === "col")) e.currentTarget.style.background = "transparent" },
+            onPointerDown: _rz.startCol,
+            title: "拖拽调整宽度"
+          }))
+          if (showH) handles.push(h("div", {
+            key: 'rh',
+            style: { position: "absolute", bottom: -2, left: 4, right: 4, height: 6, cursor: "ns-resize", zIndex: 40, borderRadius: 3, background: _rz.resizing && _rz.resizing.axis === "row" ? "rgba(79,140,255,0.5)" : "transparent" },
+            onMouseEnter: (e) => { e.currentTarget.style.background = "rgba(79,140,255,0.3)" },
+            onMouseLeave: (e) => { if (!(_rz.resizing && _rz.resizing.axis === "row")) e.currentTarget.style.background = "transparent" },
+            onPointerDown: _rz.startRow,
+            title: "拖拽调整高度"
+          }))
+          return handles
+        })(),
       )
     })
 
@@ -1739,6 +1864,8 @@ window.__ModuleLoader__.load({
           // or 'cols' (列排: vertical columns that fill horizontally). null =
           // no shelf layout chosen => the even staircase grid is used.
           orientation: null,
+          // {cols:[],rows:[]} — per-track flex weights. null = even 1fr.
+          sizes: null,
           listeners: new Set(),
           // Arrow-function methods so `this` is always the layout object even
           // when the methods are passed as bare references (e.g. into the
@@ -1797,6 +1924,12 @@ window.__ModuleLoader__.load({
             writeStoredOrientation(o)
             layout.emit()
           },
+          // Per-track flex weights (cols/rows arrays). Clamp min via caller.
+          setSizes: (sizes) => {
+            layout.sizes = sizes
+            writeStoredSizes(sizes)
+            layout.emit()
+          },
           subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn) },
           emit() { for (const fn of this.listeners) fn(this.ids) },
         }
@@ -1806,6 +1939,7 @@ window.__ModuleLoader__.load({
         if (stored !== null) layout.ids = stored
         layout.mode = readStoredMode()
         layout.orientation = readStoredOrientation()
+        layout.sizes = readStoredSizes()
 
         // ---- Register the sidebar entry ----
         ctx.slots.inject('sidebar', function* () {
