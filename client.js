@@ -672,6 +672,15 @@ window.__ModuleLoader__.load({
       // conversation content only re-renders when its own status changes.
       const [statuses, setStatuses] = useState({})
       const statusesRef = useRef(statuses)
+      // Latest read-loop result + a dirty flag, living in component-scope refs
+      // so BOTH the read-loop effect and the commit effect below can see them.
+      // (They were previously local to the read-loop closure, so the commit
+      // effect's `statusDirty` reference threw ReferenceError -> black screen.)
+      const statusNextRef = useRef({})
+      const statusDirtyRef = useRef(false)
+      // Bumped whenever the read loop flags a change, to trigger the commit
+      // effect that applies statusNextRef to React state.
+      const [commitTick, setCommitTick] = useState(0)
       useEffect(() => {
         statusesRef.current = statuses
       }, [statuses])
@@ -684,17 +693,16 @@ window.__ModuleLoader__.load({
         // O(N×events) hot loop during streaming.
         let raf = 0
         let scheduled = false
-        // Latest `next` map + dirty flag, committed to state by the effect
-        // below. This is how the loop's result reaches React without calling
-        // setStatuses synchronously inside the rAF callback.
-        let statusNext = {}
-        let statusDirty = false
+        // Latest `next` map + dirty flag live in the component-scope refs
+        // (statusNextRef / statusDirtyRef, declared above), NOT in this
+        // closure — the commit effect reads them from a different scope. This
+        // is how the loop's result reaches React without calling setStatuses
+        // synchronously inside the rAF callback.
         const readAll = () => {
           scheduled = false
           const next = {}
-          let changed = false
-          statusNext = next
-          statusDirty = false
+          statusNextRef.current = next
+          statusDirtyRef.current = false
           for (const id of layout.ids) {
             const pane = paneRefs[id]
             const face = pane?.ref?.binding?.session
@@ -767,14 +775,14 @@ window.__ModuleLoader__.load({
               if (!prev || prev.running !== next[id].running || prev.blank !== next[id].blank ||
                   prev.promptAttempted !== next[id].promptAttempted || prev.error !== next[id].error ||
                   prev.pending !== next[id].pending) {
-                changed = true
-                statusDirty = true
+                statusDirtyRef.current = true
+                setCommitTick(t => t + 1)
               }
             } catch {
               /* binding not ready yet */
             }
           }
-          }
+        }
         // scheduleRead: coalesce face events into ONE readAll per animation frame.
         const scheduleRead = () => {
           if (scheduled) return
@@ -802,13 +810,15 @@ window.__ModuleLoader__.load({
       }, [layout.ids.join(','), paneRefs])
 
       // Commit the freshly-read statuses to React state (the loop above only
-      // builds `next`; this applies it when anything actually changed).
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      // builds `next`; this applies it when anything actually changed). The
+      // refs are component-scope so this effect can read them — the previous
+      // version referenced `statusDirty` from the read-loop closure, which
+      // threw ReferenceError and black-screened the booth.
       useEffect(() => {
-        if (!statusDirty) return
-        setStatuses(statusNext)
-        statusDirty = false
-      }, [statusDirty, statusNext])
+        if (!statusDirtyRef.current) return
+        statusDirtyRef.current = false
+        setStatuses(statusNextRef.current)
+      }, [commitTick])
 
       const disabled = useMemo(() => new Set(layout.ids), [layout.ids])
 
