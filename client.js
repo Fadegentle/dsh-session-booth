@@ -20,6 +20,7 @@ window.__ModuleLoader__.load({
 
     const STORAGE_KEY = 'dsh.splitSessions.layout'
     const LAYOUT_MODE_KEY = 'dsh.splitSessions.layoutMode'
+    const ORIENTATION_KEY = 'dsh.splitSessions.orientation'
 
     // ------------------------------------------- localized dictionaries
 
@@ -48,6 +49,8 @@ window.__ModuleLoader__.load({
       'split.confirm': 'Confirm',
       'split.layoutGrid': 'Grid layout',
       'split.layoutColumns': 'Column layout',
+      'split.layoutRows': 'Rows (bookshelf shelves, stacked top to bottom)',
+      'split.layoutCols': 'Columns (vertical stacks, filling left to right)',
       'split.addToBooth': 'Add to Session Booth',
       'split.addToBoothAria': 'Add this session to the Session Booth',
       'split.inBooth': 'Already in the Session Booth',
@@ -87,6 +90,8 @@ window.__ModuleLoader__.load({
       'split.confirm': '确认',
       'split.layoutGrid': '网格布局',
       'split.layoutColumns': '分栏布局',
+      'split.layoutRows': '横排（书架式货架，上下堆叠）',
+      'split.layoutCols': '列排（竖直分栏，横向填充）',
       'split.addToBooth': '加入会话廊',
       'split.addToBoothAria': '将该会话加入会话廊',
       'split.inBooth': '已在会话廊中',
@@ -149,6 +154,32 @@ window.__ModuleLoader__.load({
         window.localStorage.setItem(LAYOUT_MODE_KEY, JSON.stringify(mode))
       } catch {
         /* localStorage unavailable — mode just won't persist. */
+      }
+    }
+
+    // Shelf layout orientation: 'rows' (横排, bookshelf — horizontal shelves
+    // that stack vertically) or 'cols' (列排 — vertical columns that fill a
+    // horizontal band). Persisted so the preferred arrangement survives a
+    // reload. Defaults to 'rows'.
+    const ORIENTATIONS = ['rows', 'cols']
+
+    function readStoredOrientation() {
+      try {
+        const raw = window.localStorage.getItem(ORIENTATION_KEY)
+        if (raw === null) return 'rows'
+        const parsed = JSON.parse(raw)
+        if (ORIENTATIONS.includes(parsed)) return parsed
+        return 'rows'
+      } catch {
+        return 'rows'
+      }
+    }
+
+    function writeStoredOrientation(o) {
+      try {
+        window.localStorage.setItem(ORIENTATION_KEY, JSON.stringify(o))
+      } catch {
+        /* localStorage unavailable — orientation just won't persist. */
       }
     }
 
@@ -277,6 +308,21 @@ window.__ModuleLoader__.load({
       },
         h('line', { x1: 4, y1: 4, x2: 12, y2: 12 }),
         h('line', { x1: 12, y1: 4, x2: 4, y2: 12 }),
+      )
+    }
+
+    // Bookshelf glyph: two horizontal shelves (used to switch to the 横排
+    // / shelf layout). Reads as "rows stacked vertically".
+    function ShelfIcon({ size = 12 }) {
+      return h('svg', {
+        width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
+        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        'aria-hidden': 'true',
+      },
+        h('line', { x1: 2, y1: 5.5, x2: 14, y2: 5.5 }),
+        h('line', { x1: 2, y1: 11, x2: 14, y2: 11 }),
+        h('rect', { x: 3, y: 2, width: 3, height: 3.5, rx: 0.5 }),
+        h('rect', { x: 3, y: 7.5, width: 3, height: 3.5, rx: 0.5 }),
       )
     }
 
@@ -477,6 +523,18 @@ window.__ModuleLoader__.load({
      * an explicit SessionProvider so it binds to its own session.
      */
 
+    // ---- Shelf layout (横排 / 列排) constants ----
+    // The grid's own padding and gap (must match the grid container style).
+    const SHELF_PAD = 8
+    const SHELF_GAP = 8
+    // Each pane's MINIMUM size. The "-+" float window (two 22px corner
+    // buttons + divider + gap + padding) measures ~85px wide; a pane must
+    // stay a bit larger than that so the float is never clipped. There is no
+    // fixed cap on the pane count — how many fit per shelf/column is DERIVED
+    // from the measured available size divided by this minimum.
+    const MIN_PANE_W = 104
+    const MIN_PANE_H = 104
+
     // gcd / lcm helpers for the staircase grid layout.
     function gcd(a, b) { while (b) { const t = a % b; a = b; b = t } return a }
     function lcm(a, b) { return (a / gcd(a, b)) * b }
@@ -525,6 +583,33 @@ window.__ModuleLoader__.load({
       if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
       if (mode === 'columns') return computeColumns(n)
       return computeStaircase(n)
+    }
+
+    // ---- Shelf layout (横排 / 列排) ----
+    // The shelf model keeps ONE flat list of session ids (layout.ids) and an
+    // orientation. Panes flow left-to-right along a shelf and wrap to the next
+    // shelf (rows) or top-to-bottom along a column and wrap to the next column
+    // (cols). How many panes fit per shelf/column is DERIVED from the measured
+    // available size divided by the minimum pane size — there is no fixed cap,
+    // so a wider/shorter booth simply fits more panes per shelf.
+    function isShelfOrientation(o) { return o === 'rows' || o === 'cols' }
+
+    // Grid track counts for the current orientation. `perShelf` is the measured
+    // pane-per-shelf count; 0 means "not measured yet" (fall back to staircase).
+    function shelfGrid(n, orientation, perShelf) {
+      if (n <= 0 || !isShelfOrientation(orientation) || perShelf < 1) return null
+      if (orientation === 'cols') {
+        // 列排: vertical columns, each at least MIN_PANE_H tall, filling a
+        // horizontal band. Rows = panes per column; columns = how many bands.
+        const rowCount = perShelf
+        const colCount = Math.max(1, Math.ceil(n / rowCount))
+        return { rows: rowCount, totalCols: colCount }
+      }
+      // 横排: horizontal shelves, each at least MIN_PANE_W wide, stacking
+      // vertically. Columns = panes per shelf; rows = how many shelves.
+      const colCount = perShelf
+      const rowCount = Math.max(1, Math.ceil(n / colCount))
+      return { rows: rowCount, totalCols: colCount }
     }
 
     function SplitPanel(props) {
@@ -920,13 +1005,26 @@ window.__ModuleLoader__.load({
         return Math.min(px, 480) // hard cap so it never overflows a pane
       }, [layout.ids, wsBySession, wsDisplay])
 
-      // Mode-aware layout: 'grid' -> balanced staircase (no empty cells, odd
-      // counts like 5 -> 上2下3), 'columns' -> a single horizontal row of N
-      // equal panes for side-by-side reading.
-      const grid = computeLayout(layout.ids.length, layout.mode || 'grid')
+      // Layout resolution. When a shelf orientation is active and we've
+      // measured the box, use the shelf grid (横排 shelves / 列排 columns);
+      // otherwise fall back to the staircase / column-split model.
+      const shelf = isShelfOrientation(layout.orientation)
+        ? shelfGrid(layout.ids.length, layout.orientation, perShelf)
+        : null
+      const grid = shelf || computeLayout(layout.ids.length, layout.mode || 'grid')
       const cols = grid.totalCols
       const rows = grid.rows
-      const placements = grid.placements
+      // In shelf mode shelfGrid() deliberately omits placements: panes must be
+      // AUTO-PLACED so gridAutoFlow can wrap them onto a new shelf/column once
+      // the min-size track no longer fits. Explicit gridColumn/gridRow spans
+      // would pin every pane to row 1 and defeat the wrapping.
+      const placements = shelf ? [] : grid.placements
+      // Track sizes: in shelf mode panes never shrink below MIN_PANE_W/H, so
+      // the "-+" float is always fully visible; extra space is shared as
+      // flex-grow (1fr up to the min).
+      const trackMin = shelf
+        ? (layout.orientation === 'cols' ? MIN_PANE_H : MIN_PANE_W)
+        : null
 
       // Empty state (no panes yet): show the "add sessions" affordance in BOTH
       // the first-visit case (never configured) and the all-removed case
@@ -1020,6 +1118,32 @@ window.__ModuleLoader__.load({
       }
 
       const gridRef = useRef(null)
+      // Measured pane-per-shelf count for the shelf layout. Derived from the
+      // live grid box size via ResizeObserver, so it tracks window resizes.
+      const [perShelf, setPerShelf] = useState(0)
+      useEffect(() => {
+        const el = gridRef.current
+        if (!el) return
+        const measure = () => {
+          const w = el.clientWidth - SHELF_PAD * 2
+          const h = el.clientHeight - SHELF_PAD * 2
+          let count
+          if (layout.orientation === 'cols') {
+            // 列排: how many panes stack vertically before a new column band.
+            count = Math.max(1, Math.floor((h + SHELF_GAP) / (MIN_PANE_H + SHELF_GAP)))
+          } else {
+            // 横排: how many panes sit side-by-side before a new shelf.
+            count = Math.max(1, Math.floor((w + SHELF_GAP) / (MIN_PANE_W + SHELF_GAP)))
+          }
+          setPerShelf(count)
+        }
+        measure()
+        if (typeof ResizeObserver === 'undefined') return
+        const ro = new ResizeObserver(measure)
+        ro.observe(el)
+        return () => { try { ro.disconnect() } catch { /* noop */ } }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [layout.orientation, gridRef.current])
 
       const endDrag = () => {
         clearTimeout(dragTimer.current)
@@ -1092,38 +1216,46 @@ window.__ModuleLoader__.load({
           position: 'relative', height: '100%', width: '100%',
         },
       },
-        // Global layout-mode toggle: switches between the balanced grid and a
-        // single horizontal row (column split). It floats over the grid's
-        // top-right corner so it never shifts the pane layout.
-        layout.ids.length > 1
+        // Shelf-orientation toggle: 横排 (bookshelf shelves) / 列排 (vertical
+        // columns). Sits at the far top-right, BELOW the per-pane "-+" float
+        // (which lives inside each pane at top:8 right:8), so it never overlaps
+        // a pane's own remove/add control.
+        layout.ids.length > 1 && shelf
           ? h('div', {
             className: 'dshSplitFloat',
             style: {
-              position: 'absolute', top: 8, right: 8, zIndex: 20,
-              display: 'flex', alignItems: 'center', gap: 4,
+              position: 'absolute', top: 44, right: 8, zIndex: 20,
+              display: 'flex', alignItems: 'center', gap: 2,
               background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
               borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
             },
           },
             h('button', {
               type: 'button',
-              title: layout.mode === 'grid' ? t('split.layoutColumns') : t('split.layoutGrid'),
-              'aria-label': layout.mode === 'grid' ? t('split.layoutColumns') : t('split.layoutGrid'),
-              onClick: () => layout.setMode(layout.mode === 'grid' ? 'columns' : 'grid'),
-              style: cornerBtnStyle(),
-            },
-              layout.mode === 'grid'
-                ? h(ColumnsIcon, { size: 12 })
-                : h(GridIcon, { size: 12 }),
-            ),
+              title: t('split.layoutRows'),
+              'aria-label': t('split.layoutRows'),
+              onClick: () => layout.setOrientation('rows'),
+              style: { ...cornerBtnStyle(), opacity: layout.orientation === 'rows' ? 1 : 0.5 },
+            }, h(ShelfIcon, { size: 12 })),
+            h('button', {
+              type: 'button',
+              title: t('split.layoutCols'),
+              'aria-label': t('split.layoutCols'),
+              onClick: () => layout.setOrientation('cols'),
+              style: { ...cornerBtnStyle(), opacity: layout.orientation === 'cols' ? 1 : 0.5 },
+            }, h(ColumnsIcon, { size: 12 })),
           )
           : null,
         h('div', {
           ref: gridRef,
           style: {
             display: 'grid',
-            gridTemplateColumns: `repeat(${cols}, 1fr)`,
-            gridTemplateRows: `repeat(${rows}, 1fr)`,
+            gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : `repeat(${cols}, 1fr)`,
+            gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : `repeat(${rows}, 1fr)`,
+            // Shelf wrap: 'rows' stacks shelves vertically (new shelf when a
+            // pane no longer fits the min width); 'cols' fills a horizontal
+            // band (new column when a pane no longer fits the min height).
+            gridAutoFlow: shelf ? (layout.orientation === 'cols' ? 'column' : 'row') : undefined,
             height: '100%', width: '100%', gap: 8, padding: 8, background: 'var(--dsh-bg, #1e1e1e)',
             boxSizing: 'border-box',
           },
@@ -1591,6 +1723,9 @@ window.__ModuleLoader__.load({
         // Session layout state shared between the sidebar and the panel.
         const layout = {
           ids: [],
+          // 'rows' (横排, bookshelf: horizontal shelves that stack vertically)
+          // or 'cols' (列排: vertical columns that fill horizontally).
+          orientation: 'rows',
           listeners: new Set(),
           // Arrow-function methods so `this` is always the layout object even
           // when the methods are passed as bare references (e.g. into the
@@ -1637,6 +1772,18 @@ window.__ModuleLoader__.load({
             writeStoredMode(mode)
             layout.emit()
           },
+          // Shelf layout orientation: 'rows' = 横排 (horizontal shelves that
+          // stack vertically, like a bookshelf); 'cols' = 列排 (vertical
+          // columns that fill a horizontal band). Each pane's minimum size is
+          // the "-+" float window plus a margin, so the number of panes per
+          // shelf/column is derived from the measured available size - there is
+          // no fixed cap.
+          setOrientation: (o) => {
+            if (o !== 'rows' && o !== 'cols') return
+            layout.orientation = o
+            writeStoredOrientation(o)
+            layout.emit()
+          },
           subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn) },
           emit() { for (const fn of this.listeners) fn(this.ids) },
         }
@@ -1645,6 +1792,7 @@ window.__ModuleLoader__.load({
         layout.initialized = stored !== null
         if (stored !== null) layout.ids = stored
         layout.mode = readStoredMode()
+        layout.orientation = readStoredOrientation()
 
         // ---- Register the sidebar entry ----
         ctx.slots.inject('sidebar', function* () {
@@ -1703,6 +1851,8 @@ window.__ModuleLoader__.load({
                 addMissing: layout.addMissing,
                 addAt: layout.addAt,
                 replaceAt: layout.replaceAt,
+                orientation: layout.orientation,
+                setOrientation: layout.setOrientation,
                 setMode: layout.setMode,
                 dismiss: layout.dismiss,
               },
