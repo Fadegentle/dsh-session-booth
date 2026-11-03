@@ -655,6 +655,9 @@ window.__ModuleLoader__.load({
       // layout index; dragOver = the index it would land on; dragging gates
       // pointer capture so a stray release can't drop it in the wrong place.
       const [dragIndex, setDragIndex] = useState(null)
+      // Measured pane-per-shelf count for the shelf layout (横排 / 列排).
+      // Declared early so the layout derivation below can read it.
+      const [perShelf, setPerShelf] = useState(0)
       const [dragOver, setDragOver] = useState(null)
       const dragTimer = useRef(null)
       const dragStart = useRef(null)
@@ -1118,9 +1121,10 @@ window.__ModuleLoader__.load({
       }
 
       const gridRef = useRef(null)
-      // Measured pane-per-shelf count for the shelf layout. Derived from the
-      // live grid box size via ResizeObserver, so it tracks window resizes.
-      const [perShelf, setPerShelf] = useState(0)
+      // Measured pane-per-shelf count for the shelf layout (state declared
+      // above, next to the other useState so it is initialized before use).
+      // Derived from the live grid box size via ResizeObserver, so it tracks
+      // window resizes.
       useEffect(() => {
         const el = gridRef.current
         if (!el) return
