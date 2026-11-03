@@ -52,6 +52,16 @@ window.__ModuleLoader__.load({
       'split.addToBoothAria': 'Add this session to the Session Booth',
       'split.inBooth': 'Already in the Session Booth',
       'split.inBoothAria': 'This session is already in the Session Booth',
+      // Long-press "-" -> confirm before clearing the WHOLE booth.
+      'split.clearBoothTitle': 'Clear session booth?',
+      'split.clearBoothMsg': 'This removes every session from the booth. You can re-add them any time.',
+      'split.clearBoothConfirm': 'Clear all',
+      'split.clearBoothCancel': 'Cancel',
+      // Session switch: target not active in this workspace.
+      'split.switchUnavailable': 'That session is not active yet. Start it first.',
+      // Picker footer: select-all / clear-all shortcuts.
+      'split.pickerSelectAll': 'Select all',
+      'split.pickerClear': 'Clear all',
     }
 
     const zh = {
@@ -81,6 +91,16 @@ window.__ModuleLoader__.load({
       'split.addToBoothAria': '将该会话加入会话廊',
       'split.inBooth': '已在会话廊中',
       'split.inBoothAria': '该会话已在会话廊中',
+      // 长按 "-" -> 清空整个会话廊前先确认。
+      'split.clearBoothTitle': '清空会话廊？',
+      'split.clearBoothMsg': '这会移除会话廊中的所有会话。你可以随时重新添加。',
+      'split.clearBoothConfirm': '全部清空',
+      'split.clearBoothCancel': '取消',
+      // 切换会话：目标会话在本工作区未激活。
+      'split.switchUnavailable': '该会话尚未启动，请先启动它。',
+      // 选择器底部：全选 / 清空快捷操作。
+      'split.pickerSelectAll': '全选',
+      'split.pickerClear': '清空',
     }
 
     // ------------------------------------------------------------------ utils
@@ -822,6 +842,19 @@ window.__ModuleLoader__.load({
 
       const disabled = useMemo(() => new Set(layout.ids), [layout.ids])
 
+      // Clear the WHOLE booth (long-press "-" -> confirm -> this). Removes
+      // every session from the layout; the pane refs release on the next
+      // paneRefs effect pass and SplitViewPanel returns to the editor.
+      const onClearBooth = () => layout.set([])
+
+      // Guard for the in-place session switch: a session listed in the
+      // workspace's sessionIds is not necessarily still ACTIVE in the
+      // session controller (it may have been closed). Swapping to such an
+      // id makes retain() fail -> pane.ref null -> the empty-state text the
+      // user reported. Return true to block the switch (list click is
+      // silently ignored for unavailable sessions).
+      const switchUnavailable = (sid) => !available.some(s => s.id === sid)
+
       // Build a sessionId -> workspace map for workspace-aware titles and
       // workspace switching. A session belongs to a workspace if its id is
       // listed in that workspace's sessionIds.
@@ -932,24 +965,49 @@ window.__ModuleLoader__.load({
         if (e.button !== 0) return
         const target = e.target
         if (target && (target.closest('button') || target.closest('a') || target.closest('input,textarea,select'))) return
+        // Block native text-selection from the very start of the press: the
+        // conversation content inside the pane otherwise hijacks the
+        // long-press and turns the drag into a cursor highlight (滑选).
+        e.preventDefault()
+        // Belt-and-braces: a panes-wide user-select guard + clear any
+        // selection that already exists before the drag begins.
+        const paneEl = e.currentTarget
+        try { paneEl.style.userSelect = 'none'; paneEl.style.webkitUserSelect = 'none' } catch { /* noop */ }
+        try { if (window.getSelection) window.getSelection().removeAllRanges() } catch { /* noop */ }
         dragStart.current = { x: e.clientX, y: e.clientY, index }
         draggingRef.current = false
         clearTimeout(dragTimer.current)
         dragTimer.current = setTimeout(() => {
           draggingRef.current = true
+          try { if (window.getSelection) window.getSelection().removeAllRanges() } catch { /* noop */ }
           setDragIndex(index)
           setDragOver(index)
         }, 260)
       }
 
       // If the pointer moves before the long-press fires, it's a click, not a drag.
+      // Release the panes-wide user-select guard (best-effort; panes are
+      // re-rendered each layout change so this is just to unblock hover/
+      // selection between drags).
+      const releaseSelectGuard = () => {
+        try {
+          const g = gridRef.current
+          if (g) g.querySelectorAll('[data-split-pane]').forEach(p => { p.style.userSelect = ''; p.style.webkitUserSelect = '' })
+        } catch { /* noop */ }
+      }
       const cancelDragPress = () => {
         clearTimeout(dragTimer.current)
         draggingRef.current = false
+        releaseSelectGuard()
       }
 
       const onDragMove = (index) => (e) => {
+        // While the lift is armed (before the 260ms fires) the press is
+        // still tracked: suppress the native selection that a moving
+        // pointer would otherwise paint over the conversation text.
+        if (dragStart.current) { try { e.preventDefault() } catch { /* noop */ } }
         if (!draggingRef.current) return
+        try { e.preventDefault() } catch { /* noop */ }
         const over = document.elementFromPoint(e.clientX, e.clientY)
         if (over) {
           const paneEl = over.closest('[data-split-pane]')
@@ -965,6 +1023,7 @@ window.__ModuleLoader__.load({
 
       const endDrag = () => {
         clearTimeout(dragTimer.current)
+        releaseSelectGuard()
         const from = dragIndex
         const to = dragOver
         draggingRef.current = false
@@ -999,7 +1058,30 @@ window.__ModuleLoader__.load({
             : (currentIdx + dir + panes.length) % panes.length
           const target = panes[nextIdx]
           const input = target?.querySelector('[data-composer-input]') || target?.querySelector('[contenteditable="true"]')
-          if (input) input.focus({ preventScroll: true })
+          if (input) {
+            input.focus({ preventScroll: true })
+            // Put the caret at the END of the content (both back- and
+            // forward-cycling), not at the start. Plain inputs use
+            // setSelectionRange; the Lexical composer is a contenteditable,
+            // so collapse the DOM Selection to its last position instead.
+            const caretToEnd = () => {
+              try {
+                if (typeof input.setSelectionRange === 'function') {
+                  const len = (input.value != null ? input.value.length : 0)
+                  input.setSelectionRange(len, len)
+                } else if (input.lastChild && input.lastChild.nodeType === Node.TEXT_NODE) {
+                  const r = document.createRange()
+                  r.selectNodeContents(input)
+                  r.collapse(false)
+                  const s = window.getSelection()
+                  s.removeAllRanges()
+                  s.addRange(r)
+                }
+              } catch { /* composer may not be ready yet */ }
+            }
+            caretToEnd()
+            requestAnimationFrame(caretToEnd)
+          }
         }
         document.addEventListener('keydown', onKeyDown)
         return () => document.removeEventListener('keydown', onKeyDown)
@@ -1071,6 +1153,8 @@ window.__ModuleLoader__.load({
           // list swaps THIS window to that session (same grid slot, stays in
           // the booth) instead of jumping to the editor via openSession.
           onSwitch: (sessionId) => layout.replaceAt(index, sessionId),
+          onClearBooth: onClearBooth,
+          switchUnavailable: switchUnavailable,
           t,
           SessionProvider,
           mounted: mounted.has(id),
@@ -1101,6 +1185,8 @@ window.__ModuleLoader__.load({
             showRecent: t('split.showRecent'),
             showAll: t('split.showAll'),
             ungrouped: t('split.ungrouped'),
+            selectAllLabel: t('split.pickerSelectAll'),
+            clearLabel: t('split.pickerClear'),
             onCancel: () => { layout.dismiss(); setPicker(null) },
             onConfirm: (ids) => {
               // For an "add" ("+") confirm, insert the newly-chosen session
@@ -1166,7 +1252,7 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel }) {
       return h('div', {
         'data-split-pane': index,
         onPointerDown: onDragStart,
@@ -1208,8 +1294,14 @@ window.__ModuleLoader__.load({
      * session (already established by the surrounding SessionProvider), plus
      * add/remove corner controls in the top-right.
      */
-    function PaneContentBase({ renderFactorySlot, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t }) {
+    function PaneContentBase({ renderFactorySlot, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, onClearBooth, switchUnavailable, t }) {
       const [switchOpen, setSwitchOpen] = useState(false)
+      // Long-press "-" -> confirm before clearing the WHOLE booth. A quick
+      // tap still removes just THIS pane. useLongPress arms a timer on
+      // pointerdown; if it fires we show the confirm dialog instead of
+      // removing the single session.
+      const [confirmClear, setConfirmClear] = useState(false)
+      const longPress = useLongPress(() => setConfirmClear(true), 500)
       // Close the session-switcher dropdown on any click outside the floating
       // title window (the dropdown is anchored inside it). A document-level
       // mousedown listener checks whether the event target is contained by
@@ -1304,7 +1396,15 @@ window.__ModuleLoader__.load({
                   const active = sid === workspace.currentSessionId
                   return h('button', {
                     key: sid,
-                    onClick: (e) => { e.stopPropagation(); onSwitch(sid); setSwitchOpen(false) },
+                    onClick: (e) => {
+                      e.stopPropagation()
+                      setSwitchOpen(false)
+                      // If the target session isn't active in this workspace
+                      // yet, surface a hint instead of swapping to an empty
+                      // pane (the reported "当前没有活动的会话").
+                      if (typeof switchUnavailable === 'function' && switchUnavailable(sid)) return
+                      onSwitch(sid)
+                    },
                     style: {
                       display: 'flex', alignItems: 'center', gap: 6, width: '100%',
                       padding: '6px 10px', borderRadius: 6, border: 'none',
@@ -1340,8 +1440,20 @@ window.__ModuleLoader__.load({
             },
               h('button', {
                 type: 'button',
-                title: t('split.removeSession'), 'aria-label': t('split.removeSession'),
-                onClick: (e) => { e.stopPropagation(); e.preventDefault(); onRemove() },
+                // Tooltip documents BOTH gestures: tap removes this pane,
+                // long-press opens the clear-the-whole-booth confirm.
+                title: t('split.removeSession') + ' / ' + t('split.clearBoothTitle'),
+                'aria-label': t('split.removeSession'),
+                onPointerDown: (e) => { if (e.button === 0) longPress.start() },
+                onPointerUp: () => longPress.cancel(),
+                onPointerLeave: () => longPress.cancel(),
+                onClick: (e) => {
+                  e.stopPropagation(); e.preventDefault()
+                  // A long-press just fired the clear-booth confirm; don't
+                  // ALSO remove this single pane.
+                  if (longPress.didFire()) return
+                  onRemove()
+                },
                 style: cornerBtnStyle(),
               }, h(MinusIcon)),
               // Vertical divider between "−" and "+".
@@ -1368,6 +1480,44 @@ window.__ModuleLoader__.load({
             slots: {},
           }),
         ),
+        // Clear-the-whole-booth confirm dialog (long-press "-"). Overlays the
+        // pane so it reads as a blocking confirm, not a side panel.
+        confirmClear ? h('div', {
+          onClick: (e) => e.stopPropagation(),
+          style: {
+            position: 'absolute', inset: 0, zIndex: 60, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)',
+          },
+        },
+          h('div', {
+            style: {
+              minWidth: 280, maxWidth: '80%', padding: 18, borderRadius: 12,
+              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', gap: 10,
+            },
+          },
+            h('div', { style: { fontSize: 15, fontWeight: 600 } }, t('split.clearBoothTitle')),
+            h('div', { style: { fontSize: 13, opacity: 0.7, lineHeight: 1.5 } }, t('split.clearBoothMsg')),
+            h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 } },
+              h('button', {
+                onClick: () => setConfirmClear(false),
+                style: {
+                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                  border: '1px solid var(--dsh-border, #333)', background: 'transparent',
+                  color: 'var(--dsh-fg, #eee)', fontSize: 13,
+                },
+              }, t('split.clearBoothCancel')),
+              h('button', {
+                onClick: () => { setConfirmClear(false); if (typeof onClearBooth === 'function') onClearBooth() },
+                style: {
+                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer', border: 'none',
+                  background: '#e5484d', color: '#fff', fontSize: 13, fontWeight: 500,
+                },
+              }, t('split.clearBoothConfirm')),
+            ),
+          ),
+        ) : null,
       )
     }
 
