@@ -1217,13 +1217,14 @@ window.__ModuleLoader__.load({
       },
         // Shelf-orientation toggle: 横排 (bookshelf shelves) / 列排 (vertical
         // columns). Sits at the far top-right, BELOW the per-pane "-+" float
-        // (which lives inside each pane at top:8 right:8), so it never overlaps
-        // a pane's own remove/add control.
+        // (top:8 right:8, 26px tall -> bottom edge 34) by half the float's
+        // height (13px) => top:47, so it never overlaps a pane's own
+        // remove/add control and reads as its companion.
         layout.ids.length > 1 && shelf
           ? h('div', {
             className: 'dshSplitFloat',
             style: {
-              position: 'absolute', top: 44, right: 8, zIndex: 20,
+              position: 'absolute', top: 47, right: 8, zIndex: 20,
               display: 'flex', alignItems: 'center', gap: 2,
               background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
               borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
@@ -1823,9 +1824,16 @@ window.__ModuleLoader__.load({
           }, function SplitViewPanel(props) {
             const [ids, setIds] = useState(layout.ids)
             const [mode, setMode] = useState(layout.mode)
+            const [orientation, setOrientation] = useState(layout.orientation)
             useEffect(() => layout.subscribe((next) => {
               setIds(next)
               setMode(layout.mode)
+              // Orientation must re-render too: the shelf layout + the
+              // toggle icon highlight both derive from layout.orientation,
+              // and the layout prop reads it at render time. Without this a
+              // click only updates the stored value and the panel keeps the
+              // old orientation until an unrelated re-render.
+              setOrientation(layout.orientation)
             }), [])
             const { SessionProvider, renderFactorySlot } = props
             // Zero windows -> return to the normal editor (the default
@@ -1851,7 +1859,7 @@ window.__ModuleLoader__.load({
                 addMissing: layout.addMissing,
                 addAt: layout.addAt,
                 replaceAt: layout.replaceAt,
-                orientation: layout.orientation,
+                orientation: orientation,
                 setOrientation: layout.setOrientation,
                 setMode: layout.setMode,
                 dismiss: layout.dismiss,
