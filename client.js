@@ -888,6 +888,8 @@ window.__ModuleLoader__.load({
         }
       }
 
+      const gridRef = useRef(null)
+
       const endDrag = () => {
         clearTimeout(dragTimer.current)
         const from = dragIndex
@@ -903,6 +905,32 @@ window.__ModuleLoader__.load({
         setDragIndex(null)
         setDragOver(null)
       }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab cycles focus to the next/previous pane's
+      // composer input (首尾衔接 — wraps at the ends). This mirrors the
+      // common browser/IDE behavior for switching between editor panes.
+      useEffect(() => {
+        const onKeyDown = (e) => {
+          if (!e.ctrlKey && !e.metaKey) return
+          if (e.key !== 'Tab') return
+          const grid = gridRef.current
+          if (!grid) return
+          const panes = Array.from(grid.querySelectorAll('[data-split-pane]'))
+          if (panes.length === 0) return
+          e.preventDefault()
+          const active = document.activeElement
+          const currentIdx = panes.findIndex(p => p.contains(active))
+          const dir = e.shiftKey ? -1 : 1
+          const nextIdx = currentIdx === -1
+            ? (dir === 1 ? 0 : panes.length - 1)
+            : (currentIdx + dir + panes.length) % panes.length
+          const target = panes[nextIdx]
+          const input = target?.querySelector('[data-composer-input]') || target?.querySelector('[contenteditable="true"]')
+          if (input) input.focus({ preventScroll: true })
+        }
+        document.addEventListener('keydown', onKeyDown)
+        return () => document.removeEventListener('keydown', onKeyDown)
+      }, [])
 
       return h('div', {
         style: {
@@ -936,6 +964,7 @@ window.__ModuleLoader__.load({
           )
           : null,
         h('div', {
+          ref: gridRef,
           style: {
             display: 'grid',
             gridTemplateColumns: `repeat(${cols}, 1fr)`,
