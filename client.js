@@ -879,9 +879,16 @@ window.__ModuleLoader__.load({
               //       running -> pulsing green
               //       blank && never prompted -> yellow (pending)
               //       otherwise -> solid green
+              // Match DSH: blank = never prompted AND awaiting the first turn.
+              // A freshly-opened session can be briefly running its setup, so
+              // guard running before blank; and if the snapshot does not expose
+              // `blank`, fall back to "never prompted and nothing settled".
+              const awaitingFirst = s.awaitingFirstTurn !== false
+              const neverPrompted = s.promptAttempted === false || s.promptAttempted === undefined
+              const isBlank = s.blank === true || (s.blank === undefined && neverPrompted && awaitingFirst)
               const live = s.running
                 ? 'running'
-                : s.blank && !s.promptAttempted
+                : isBlank && !s.promptAttempted
                   ? 'pending'
                   : 'done'
               const settledFailure = !!(latestTurn && turnFailed)
