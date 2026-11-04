@@ -18,14 +18,14 @@
 | 🎯 First-click multi-select | A session picker lets you check multiple sessions |
 | 🔲 Split layout | Auto-balanced staircase grid (no empty cell for odd counts, e.g. 5 → 2 top + 3 bottom) |
 | 📐 Column layout | One-click toggle to a single row of N equal columns (grid / column switch) |
-| 🏗️ Rows / Columns | Shelf-style layout: rows = one pane per row, columns = one pane per column; click icon to toggle instantly |
+| 🏗️ Horizontal / Vertical | Shelf-style layout: horizontal = balanced multi-column grid that wraps (not 5-in-a-row), vertical = single-column stack; click icon to toggle instantly |
 | 📏 Pane resize | Drag handles on the right/bottom edge of each pane to resize; auto-normalized and persisted |
 | 🖱️ Drag to reorder | Long-press a pane's empty area to lift it, then drag to a target to reorder (event target used directly for reliability) |
 | ➕ Targeted add | The "＋" on a pane inserts the new window right after that pane |
 | ⚙️ Per-pane controls | Top-right: status dot, remove (−), add (+) |
 | 🏷️ Title bar | "Workspace / session" split: click the workspace name to jump to the current session, click the session name to switch sessions in that workspace |
 | 📜 Live scrolling | Scrolls to bottom and follows streaming output; pauses while an input is focused |
-| 🟢 Status dot | done=green, running=green pulse (even after a failed last turn — running retry shows green), pending=yellow, error=red |
+| 🟢 Status dot | done=green, running=green pulse (even after a failed last turn — running retry shows green), pending=yellow (including prompted but first turn not settled), error=red |
 | 💾 Persistence | Layout and layout mode stored in `localStorage`, restored after a DSH restart |
 | 🚀 Lazy mounting | Each pane mounts on a staggered animation frame to avoid jank with many sessions |
 | ⏳ Loading animation | A unified loading overlay on first entry, fades out when rendering completes |
@@ -56,7 +56,7 @@ Place the entire `session-booth/` directory into DSH's plugin directory, then re
 2. On first entry a picker appears: check the sessions you want, then click **Confirm**.
 3. In each pane's title bar: click the "Workspace" name (left) to jump to the current session; click the "session" name to switch sessions in that workspace.
 4. In each pane's top-right corner: **+** adds more sessions, **−** removes that session.
-5. Use the 🏗️ / 📐 buttons at the grid's top-right to toggle **Rows / Columns / Grid** layout.
+5. Use the 🏗️ / 📐 buttons at the grid's top-right to toggle **Horizontal / Vertical / Grid** layout.
 6. Drag the translucent handles on each pane's right/bottom edge to resize it.
 7. Long-press a pane's empty area to lift it, then drag to reorder.
 8. The split layout is restored automatically after a DSH restart.
@@ -67,7 +67,7 @@ Place the entire `session-booth/` directory into DSH's plugin directory, then re
 | --- | --- |
 | ✅ Done | solid green `#30a46c` |
 | 🔄 Running | green fade in/out pulse (also shown when retrying after a failed last turn) |
-| 🟡 Pending (no first turn yet) | yellow `#f5a623` |
+| 🟡 Pending (no settled turn yet) | yellow `#f5a623` |
 | 🔴 Unexpected termination / error | red `#e5484d` |
 
 ## 🧩 Compatibility
@@ -92,13 +92,36 @@ session-booth/
 
 ## 📝 Changelog
 
+### v0.3.4
+
+- 🗑️ Removed the guide UI (icon + title + "Add sessions" button) shown when no sessions are in the booth; the session picker now opens directly.
+- 📌 The header "+" button toggles to "−" after adding a session; clicking it again removes the session. The toast is now an inline bubble next to the button instead of a fixed overlay at the screen corner.
+- 🖱️ All buttons now have an `:active` pressed-state feedback (scale + darken), visually distinct from hover.
+
+### v0.3.3
+
+- 🐛 Fixed: the Session Booth could not be reopened after dismissing the picker or clearing all sessions (new `dismissed` flag is reset on open; the panel only returns to the editor when the user explicitly dismisses/clears).
+- 📌 Clicking "Add to Session Booth" in a regular session window no longer jumps to the booth; instead a "Added to Session Booth" toast appears at the bottom-right.
+
+### v0.3.2
+
+- 🔲 Grid layout now **recalculates on every add/remove**: rows = largest square ≤ n (9→3 rows, 8→2, 6→2), evenly distributed per row, odd counts top-small bottom-large (7→3+4).
+- 🐛 Fixed: adding sessions while selecting same-workspace sessions made them invisible (picker no longer disables already-displayed sessions — all sessions are selectable, and already-displayed ones can be toggled off).
+- 🧹 Fixed "Clear all" not working: `onClearBooth` was not passed through `renderPane`; now wired correctly.
+- 🖱️ Long-press "−" now shows a **full-booth overlay confirm** (not a single-pane popup); "−" tooltip reads "Remove this session / Long-press to clear all".
+- ✏️ Session picker now has **Select all / Clear** buttons.
+
+### v0.3.1
+
+- 🔄 Fixed layout switching: the icon now cycles **Grid → Horizontal → Vertical → Grid** (three states; previously it looped only Horizontal↔Vertical and never returned to Grid). For perfectly-filled pane counts (4, 6, 9…) Horizontal takes one extra column so it no longer renders identically to Grid — which was the "only Grid and Vertical, no Horizontal" bug.
+
 ### v0.3.0
 
-- 🏗️ Added **Rows / Columns** shelf layout (rows = one pane per row, columns = one pane per column), toggled instantly from the grid toolbar and persisted.
+- 🏗️ Added **Horizontal / Vertical** shelf layout (horizontal = balanced multi-column grid that wraps, vertical = single-column stack), toggled instantly from the grid toolbar and persisted.
 - 📏 Added **pane resizing**: drag the translucent handles on each pane's right/bottom edge; weights are auto-normalized and stored in `localStorage`.
 - 🖱️ Drag-to-reorder now reads the pane index from the event's `currentTarget` instead of a `elementFromPoint` hit-test, making it much more reliable.
 - 🟢 Status dot rule refined: a **running retry after a failed last turn now pulses green** instead of red; red only shows when the session is settled and the latest turn failed.
-- 🟡 The pending (yellow) dot is aligned with DSH's native `blank / awaitingFirstTurn` logic so it no longer gets missed.
+- 🟡 The pending (yellow) dot shows whenever a session is not running and has no settled turn (including prompted-but-first-turn-not-settled).
 
 ### v0.2.0
 

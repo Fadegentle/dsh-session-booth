@@ -50,10 +50,13 @@ window.__ModuleLoader__.load({
       'split.confirm': 'Confirm',
       'split.layoutGrid': 'Grid layout',
       'split.layoutColumns': 'Column layout',
-      'split.layoutRows': 'Rows (bookshelf shelves, stacked top to bottom)',
-      'split.layoutCols': 'Columns (vertical stacks, filling left to right)',
+      'split.layoutRows': 'Horizontal (balanced grid, wraps to next row)',
+      'split.layoutCols': 'Vertical (stacked rows, single column)',
       'split.addToBooth': 'Add to Session Booth',
       'split.addToBoothAria': 'Add this session to the Session Booth',
+      'split.addedToBooth': 'Added to Session Booth',
+      'split.removeFromBooth': 'Remove from Session Booth',
+      'split.removedFromBooth': 'Removed from Session Booth',
       'split.inBooth': 'Already in the Session Booth',
       'split.inBoothAria': 'This session is already in the Session Booth',
       // Long-press "-" -> confirm before clearing the WHOLE booth.
@@ -61,11 +64,16 @@ window.__ModuleLoader__.load({
       'split.clearBoothMsg': 'This removes every session from the booth. You can re-add them any time.',
       'split.clearBoothConfirm': 'Clear all',
       'split.clearBoothCancel': 'Cancel',
+      // "-" button tooltip: tap removes this pane, long-press clears all.
+      'split.longPressClearAll': 'Long-press to clear all',
       // Session switch: target not active in this workspace.
       'split.switchUnavailable': 'That session is not active yet. Start it first.',
       // Picker footer: select-all / clear-all shortcuts.
       'split.pickerSelectAll': 'Select all',
       'split.pickerClear': 'Clear all',
+      // Composer toolbar: select-all / clear-all buttons.
+      'split.composerSelectAll': 'Select all',
+      'split.composerClear': 'Clear',
     }
 
     const zh = {
@@ -91,10 +99,13 @@ window.__ModuleLoader__.load({
       'split.confirm': '确认',
       'split.layoutGrid': '网格布局',
       'split.layoutColumns': '分栏布局',
-      'split.layoutRows': '横排（书架式货架，上下堆叠）',
-      'split.layoutCols': '列排（竖直分栏，横向填充）',
+      'split.layoutRows': '横排（横向多栏，自动换行填充）',
+      'split.layoutCols': '列排（单列竖直，上下堆叠）',
       'split.addToBooth': '加入会话廊',
       'split.addToBoothAria': '将该会话加入会话廊',
+      'split.addedToBooth': '已加入会话廊',
+      'split.removeFromBooth': '移出会话廊',
+      'split.removedFromBooth': '已移出会话廊',
       'split.inBooth': '已在会话廊中',
       'split.inBoothAria': '该会话已在会话廊中',
       // 长按 "-" -> 清空整个会话廊前先确认。
@@ -102,11 +113,16 @@ window.__ModuleLoader__.load({
       'split.clearBoothMsg': '这会移除会话廊中的所有会话。你可以随时重新添加。',
       'split.clearBoothConfirm': '全部清空',
       'split.clearBoothCancel': '取消',
+      // "-" 按钮提示：轻点移除此面板，长按清空全部。
+      'split.longPressClearAll': '长按清除所有',
       // 切换会话：目标会话在本工作区未激活。
       'split.switchUnavailable': '该会话尚未启动，请先启动它。',
       // 选择器底部：全选 / 清空快捷操作。
       'split.pickerSelectAll': '全选',
       'split.pickerClear': '清空',
+      // 编辑框工具栏：全选 / 清空按钮。
+      'split.composerSelectAll': '全选',
+      'split.composerClear': '清空',
     }
 
     // ------------------------------------------------------------------ utils
@@ -235,6 +251,12 @@ window.__ModuleLoader__.load({
           // out independently on hover (black -> gray). No box-level hover.
           '.dshSplitFloat button { transition: background 120ms ease, color 120ms ease }\n' +
           '.dshSplitFloat button:hover { background: rgba(255,255,255,0.12) !important }\n' +
+          '.dshSplitBtn { transition: background 120ms ease, color 120ms ease, opacity 120ms ease, transform 80ms ease }\n' +
+          '.dshSplitBtn:not(.dshSplitBtnPrimary):hover { background: rgba(255,255,255,0.12) !important }\n' +
+          '.dshSplitBtn:not(.dshSplitBtnPrimary):active { transform: scale(0.94); background: rgba(0,0,0,0.15) !important }\n' +
+          '.dshSplitBtnPrimary:hover { opacity: 0.88 !important }\n' +
+          '.dshSplitBtnPrimary:active { transform: scale(0.94); opacity: 0.7 !important }\n' +
+          '.dshSplitFloat button:active { transform: scale(0.94); background: rgba(0,0,0,0.15) !important }\n' +
           // Card fade in/out (渐入渐出): session boxes animate opacity when
           // added (fade in) and when removed (fade out over 200ms).
           '@keyframes dshSplitFadeIn { from { opacity: 0 } to { opacity: 1 } }\n' +
@@ -245,7 +267,9 @@ window.__ModuleLoader__.load({
           '@keyframes dshSplitSpin { to { transform: rotate(360deg) } }\n' +
           '.dshSplitLoading { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: var(--dsh-bg, #1e1e1e); opacity: 1; transition: opacity 320ms ease; pointer-events: none }\n' +
           '.dshSplitLoading.done { opacity: 0 }\n' +
-          '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n';
+          '.dshSplitLoading .spinner { width: 40px; height: 40px; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--dsh-accent, #4f8cff) 25%, transparent); border-top-color: var(--dsh-accent, #4f8cff); animation: dshSplitSpin 0.9s linear infinite }\n' +
+          // Toast notification for "加入会话廊" button.
+          '@keyframes dshSplitToastIn { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }\n';
         document.head.appendChild(el)
       } catch {
         /* ignore */
@@ -316,6 +340,7 @@ window.__ModuleLoader__.load({
             },
           }, msg),
           h('button', {
+            className: 'dshSplitBtn',
             onClick: () => { try { ctx.layout.selectPanel(null) } catch { /* noop */ } },
             style: {
               padding: '6px 14px', borderRadius: 6, cursor: 'pointer', border: '1px solid rgba(255,255,255,0.15)',
@@ -431,7 +456,7 @@ window.__ModuleLoader__.load({
      * @param {(ids:string[])=>void} p.onConfirm
      * @param {()=>void} p.onCancel
      */
-    function SessionPicker({ sessions, workspaces, initial, disabled, onConfirm, onCancel, title, hint, empty, confirm, cancel, showRecent, showAll, ungrouped }) {
+    function SessionPicker({ sessions, workspaces, initial, disabled, onConfirm, onCancel, title, hint, empty, confirm, cancel, showRecent, showAll, ungrouped, selectAllLabel, clearLabel }) {
       const [selected, setSelected] = useState(() => new Set(initial))
       const [recentOnly, setRecentOnly] = useState(true)
       const toggle = (id) => {
@@ -469,7 +494,52 @@ window.__ModuleLoader__.load({
           },
         },
           h('div', { style: { fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' } }, title),
-          h('div', { style: { fontSize: 13, color: 'var(--dsh-fg, #eee)', opacity: 0.65 } }, hint),
+          // Hint + select-all / clear-all buttons on the same row.
+          h('div', {
+            style: {
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+            },
+          },
+            h('div', { style: { fontSize: 13, color: 'var(--dsh-fg, #eee)', opacity: 0.65, flex: 1 } }, hint),
+            h('div', { style: { display: 'flex', gap: 4, flexShrink: 0 } },
+              h('button', {
+                type: 'button',
+                className: 'dshSplitBtn',
+                onClick: () => {
+                  const selectable = visible.filter(s => !disabled.has(s.id))
+                  const allSelected = selectable.length > 0 && selectable.every(s => selected.has(s.id))
+                  if (allSelected) {
+                    // 全部已选中 -> 取消所有可见的非 disabled 会话
+                    setSelected(prev => {
+                      const next = new Set(prev)
+                      for (const s of selectable) next.delete(s.id)
+                      return next
+                    })
+                  } else {
+                    // 部分或没有选中 -> 选中所有可见的非 disabled 会话
+                    const next = new Set()
+                    for (const s of selectable) next.add(s.id)
+                    setSelected(next)
+                  }
+                },
+                style: {
+                  padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                  border: '1px solid var(--dsh-border, #333)', background: 'transparent',
+                  color: 'var(--dsh-fg, #eee)',
+                },
+              }, selectAllLabel || 'Select all'),
+              h('button', {
+                type: 'button',
+                className: 'dshSplitBtn',
+                onClick: () => setSelected(new Set()),
+                style: {
+                  padding: '4px 10px', borderRadius: 6, fontSize: 12, cursor: 'pointer',
+                  border: '1px solid var(--dsh-border, #333)', background: 'transparent',
+                  color: 'var(--dsh-fg, #eee)',
+                },
+              }, clearLabel || 'Clear all'),
+            ),
+          ),
 
           // Show-all toggle.
           h('label', {
@@ -534,8 +604,9 @@ window.__ModuleLoader__.load({
             ),
 
           h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 } },
-            h('button', { onClick: onCancel, style: btnStyle(false) }, cancel),
+            h('button', { className: 'dshSplitBtn', onClick: onCancel, style: btnStyle(false) }, cancel),
             h('button', {
+              className: 'dshSplitBtn dshSplitBtnPrimary',
               onClick: () => onConfirm(Array.from(selected)),
               disabled: !confirmable,
               style: btnStyle(true, confirmable),
@@ -576,35 +647,23 @@ window.__ModuleLoader__.load({
     const MIN_PANE_W = 104
     const MIN_PANE_H = 104
 
-    // gcd / lcm helpers for the staircase grid layout.
-    function gcd(a, b) { while (b) { const t = a % b; a = b; b = t } return a }
-    function lcm(a, b) { return (a / gcd(a, b)) * b }
-
-    // Balanced staircase layout: no empty grid cells. For N items we pick
-    // rows = round(sqrt(N)) and distribute the items so the bottom rows are
-    // slightly wider (e.g. 5 -> [2,3] = "上2下3"). Every row fills completely.
-    // Returns { rows, totalCols, placements: [{row, col, colSpan}] }.
-    function computeStaircase(n) {
+    // Grid layout (等宽均分): 行数 = "小于等于 n 的最大平方数"的平方根
+    // (floor(sqrt(n)))。9 → 3 行 (3²=9)；8 → 2 行 (4≤8<9)；6 → 2 行。
+    // 每行 pane 数 = floor(n/行数)，不能整除时上小下大 (后几行多 1 个)：
+    // 7 → 上3下4；5 → 上2下3。每行等宽 (colSpan=1, repeat(cols,1fr))，
+    // 不再用阶梯不等宽。返回 { rows, totalCols, placements }。
+    function computeGrid(n) {
       if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
-      const rows = Math.max(1, Math.round(Math.sqrt(n)))
+      const rows = Math.max(1, Math.floor(Math.sqrt(n)))
       const base = Math.floor(n / rows)
-      let rem = n % rows
-      // Put the +1 on the BOTTOM rows (user wants 上2下3, not 3上2).
-      const counts = []
-      for (let i = 0; i < rows; i++) {
-        const extra = (i >= rows - rem) ? 1 : 0
-        counts.push(base + extra)
-      }
-      let totalCols = 1
-      for (const c of counts) totalCols = lcm(totalCols, c)
+      const rem = n % rows
+      const totalCols = base + (rem > 0 ? 1 : 0)
       const placements = []
-      let col = 0
       for (let r = 0; r < rows; r++) {
-        const span = totalCols / counts[r]
-        for (let p = 0; p < counts[r]; p++) {
-          placements.push({ row: r, col: col + p * span, colSpan: span })
+        const count = base + (r >= rows - rem ? 1 : 0)
+        for (let p = 0; p < count; p++) {
+          placements.push({ row: r, col: p, colSpan: 1 })
         }
-        col = 0
       }
       return { rows, totalCols, placements }
     }
@@ -623,7 +682,7 @@ window.__ModuleLoader__.load({
     function computeLayout(n, mode) {
       if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
       if (mode === 'columns') return computeColumns(n)
-      return computeStaircase(n)
+      return computeGrid(n)
     }
 
     // ---- Shelf layout (横排 / 列排) ----
@@ -635,21 +694,27 @@ window.__ModuleLoader__.load({
     // so a wider/shorter booth simply fits more panes per shelf.
     function isShelfOrientation(o) { return o === 'rows' || o === 'cols' }
 
-    // Grid track counts for the current orientation (one pane per row/column).
-    // Shelf layout is a STRICT one-per-row / one-per-column arrangement,
-    // derived directly from the pane count. 横排 ('rows'): one pane per
-    // horizontal row, rows stacked top-to-bottom. 列排 ('cols'): one pane per
-    // vertical column, columns laid out left-to-right. Because the track
-    // count comes straight from `n`, switching orientation applies instantly
-    // on click (no ResizeObserver re-measure needed) and evenly fills the
-    // booth — e.g. 5 sessions => 5 full-width rows, or 5 full-height columns.
+    // Grid track counts for the current orientation.
+    // 横排 ('cols'): a balanced grid that wraps naturally — columns =
+    // ceil(sqrt(n)), rows = ceil(n/cols). For 5 panes this gives a 3×2
+    // grid (上3下2), NOT 5-in-a-row. gridAutoFlow:'row' fills left-to-right.
+    // 列排 ('rows'): one pane per row, rows stack vertically (strict stack).
     function shelfGrid(n, orientation) {
       if (n <= 0 || !isShelfOrientation(orientation)) return null
       if (orientation === 'cols') {
-        // 列排: one pane per column, columns fill horizontally.
-        return { rows: 1, totalCols: n }
+        // 横排: balanced wrapping grid, not 5-in-a-row.
+        // 完美填充时 (cols*rows==n，如 4→2×2、6→3×2、9→3×3) grid(staircase)
+        // 也退化成等宽网格，视觉与横排完全重合，用户切过去看着像没变——
+        // 这就是"只有 grid 和 rows 没有 cols"的根因。多取一列变成"上多下
+        // 少"，与 grid 的"上少下多"区分。n<=2 时横排本质就是并排，不加列
+        // 以免出现空列。
+        let cols = Math.max(1, Math.ceil(Math.sqrt(n)))
+        const rows0 = Math.ceil(n / cols)
+        if (cols * rows0 === n && n > 2) cols += 1
+        const rows = Math.ceil(n / cols)
+        return { rows, totalCols: cols }
       }
-      // 横排: one pane per row, rows stack vertically.
+      // 列排: one pane per row, rows stack vertically.
       return { rows: n, totalCols: 1 }
     }
 
@@ -676,6 +741,10 @@ window.__ModuleLoader__.load({
       const [showLoading, setShowLoading] = useState(true)
       const [loadingDone, setLoadingDone] = useState(false)
       const loadingShown = useRef(false)
+      // Clear-the-whole-booth confirm dialog state (long-press "-").
+      // Managed at SplitPanel level so the overlay covers the entire booth,
+      // not a single pane.
+      const [confirmClear, setConfirmClear] = useState(false)
       useEffect(() => {
         if (layout.ids.length === 0) { setShowLoading(true); setLoadingDone(false); loadingShown.current = false; return }
         const allMounted = layout.ids.every(id => mounted.has(id))
@@ -738,14 +807,15 @@ window.__ModuleLoader__.load({
       }, [layout.ids.join(',')])
 
 
-      // First visit (no persisted layout): open the multi-select picker so the
-      // user chooses the sessions for the split view.
+      // Open the picker when there are no sessions and the booth was not
+      // dismissed: either first visit (initialized === false) or the user
+      // reopened the booth after dismissing/clearing.
       useEffect(() => {
-        if (layout.initialized === false && layout.ids.length === 0) {
+        if (layout.ids.length === 0 && !layout.dismissed) {
           setPicker({ mode: 'initial', exclude: new Set() })
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [])
+      }, [layout.ids.length, layout.dismissed])
 
       // (Re)establish SessionReference for each layout id that still exists.
       // Only re-runs when the actual id set changes; existing refs are reused
@@ -925,7 +995,11 @@ window.__ModuleLoader__.load({
                 // (retry/new) pulse green over this, so red = settled failure
                 // with nothing in-flight.
                 error: !!(settledFailure || (!s.running && (s.lastAgentError || s.openError || s.promptError))),
-                pending: live === 'pending' && !settledFailure && !settled,
+                // Pending (yellow): no turn has settled AND the session is not
+                // currently running. This catches both never-prompted blanks
+                // AND prompted sessions whose first turn hasn't completed yet.
+                // A running turn (even over a settled failure) pulses green.
+                pending: !s.running && !settledFailure && !settled,
                 running: s.running,
                 // Live state when the last turn did NOT fail.
                 _live: settledFailure ? 'error' : live,
@@ -985,6 +1059,8 @@ window.__ModuleLoader__.load({
       // every session from the layout; the pane refs release on the next
       // paneRefs effect pass and SplitViewPanel returns to the editor.
       const onClearBooth = () => layout.set([])
+      // Long-press "-" on any pane arms the clear-booth confirm overlay.
+      const onRequestClearBooth = () => setConfirmClear(true)
 
       // Guard for the in-place session switch: a session listed in the
       // workspace's sessionIds is not necessarily still ACTIVE in the
@@ -1081,36 +1157,7 @@ window.__ModuleLoader__.load({
       // "-+" float is always fully visible). No per-shelf min to enforce.
       const trackMin = null
 
-      // Empty state (no panes yet): show the "add sessions" affordance in BOTH
-      // the first-visit case (never configured) and the all-removed case
-      // (configured, then every window removed). The parent SplitViewPanel also
-      // calls ctx.layout.selectPanel(null) to return to the normal editor when
-      // the layout is empty-and-configured, but that call can race / not have
-      // landed yet. We therefore no longer return a blank black panel here —
-      // the affordance is always shown for an empty layout, giving the user a
-      // way back ("添加会话") instead of a stuck black screen.
-      if (layout.ids.length === 0) {
-        return h('div', {
-          style: {
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            height: '100%', width: '100%', gap: 14, background: 'var(--dsh-bg, #1e1e1e)',
-          },
-        },
-          h('div', {
-            style: {
-              width: 56, height: 56, borderRadius: 14, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', background: 'var(--dsh-accent, #4f8cff)', opacity: 0.85,
-            },
-          }, h(GridIcon, { size: 26 })),
-          h('div', { style: { fontSize: 15, fontWeight: 600, opacity: 0.85 } }, t('split.pickerTitle')),
-          h('div', { style: { fontSize: 13, opacity: 0.55 } }, t('split.pickerHint')),
-          h('button', {
-            onClick: () => setPicker({ mode: 'initial', exclude: new Set() }),
-            style: { ...btnStyle(true), marginTop: 6 },
-          }, t('split.emptyAdd')),
-        )
-      }
-
+      // When ids.length === 0 the picker opens directly (see useEffect above).
 
       // Long-press to lift. We only start a drag if the pointer stays still
       // for the threshold AND the press wasn't on an interactive control.
@@ -1184,10 +1231,15 @@ window.__ModuleLoader__.load({
       const gridRef = useRef(null)
 
       // --- Resize: per-track flex weights derived from layout.sizes ---
-      // colOf/rowOf: derive col/row position from placements (grid) or index
-      // (shelf: rows→row=index col=0; cols→col=index row=0).
-      const colOf = (i) => shelf ? (layout.orientation === "cols" ? i : 0) : ((placements[i] || {col: 0}).col)
-      const rowOf = (i) => shelf ? (layout.orientation === "rows" ? i : 0) : ((placements[i] || {row: 0}).row)
+      // colOf/rowOf: derive col/row position from placements (grid) or
+      // computed position (shelf: cols→col=i%cols row=floor(i/cols);
+      // rows→col=0 row=i). Must match gridAutoFlow auto-placement order.
+      const colOf = (i) => shelf
+        ? (layout.orientation === "cols" ? (i % cols) : 0)
+        : ((placements[i] || {col: 0}).col)
+      const rowOf = (i) => shelf
+        ? (layout.orientation === "rows" ? i : Math.floor(i / cols))
+        : ((placements[i] || {row: 0}).row)
       const clampSizes = (arr, n, fb) => {
         if (!Array.isArray(arr)) return Array(n).fill(fb)
         const out = Array(n)
@@ -1327,16 +1379,19 @@ window.__ModuleLoader__.load({
           position: 'relative', height: '100%', width: '100%',
         },
       },
-        // Shelf-orientation toggle: 横排 (bookshelf shelves) / 列排 (vertical
-        // columns). Sits at the far top-right, BELOW the per-pane "-+" float
-        // (top:8 right:8, 26px tall -> bottom edge 34) by half the float's
-        // height (13px) => top:47, so it never overlaps a pane's own
-        // remove/add control and reads as its companion.
-        layout.ids.length > 1 && shelf
+        // Shelf-orientation toggle: single icon button that cycles
+        // grid → 横排 → 列排 → 横排 → ... and swaps its icon to match.
+        // Always visible when there is more than one pane, so it serves as
+        // the entry point FROM grid mode INTO shelf mode. Sits at the far
+        // top-right, BELOW the per-pane "-+" float: the grid container has
+        // padding:8 and the title bar has padding top:8, so the float's top
+        // edge is at 16px; the float is 26px tall (bottom at 42); half the
+        // float's height (13px) => top:55.
+        layout.ids.length > 1
           ? h('div', {
             className: 'dshSplitFloat',
             style: {
-              position: 'absolute', top: 47, right: 8, zIndex: 20,
+              position: 'absolute', top: 55, right: 8, zIndex: 20,
               display: 'flex', alignItems: 'center', gap: 2,
               background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
               borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
@@ -1344,30 +1399,40 @@ window.__ModuleLoader__.load({
           },
             h('button', {
               type: 'button',
-              title: t('split.layoutRows'),
-              'aria-label': t('split.layoutRows'),
-              onClick: () => layout.setOrientation('rows'),
-              style: { ...cornerBtnStyle(), opacity: layout.orientation === 'rows' ? 1 : 0.5 },
-            }, h(ShelfIcon, { size: 12 })),
-            h('button', {
-              type: 'button',
-              title: t('split.layoutCols'),
-              'aria-label': t('split.layoutCols'),
-              onClick: () => layout.setOrientation('cols'),
-              style: { ...cornerBtnStyle(), opacity: layout.orientation === 'cols' ? 1 : 0.5 },
-            }, h(ColumnsIcon, { size: 12 })),
+              className: 'dshSplitBtn',
+              title: !layout.orientation ? t('split.layoutGrid')
+                : layout.orientation === 'cols' ? t('split.layoutRows')
+                : t('split.layoutCols'),
+              'aria-label': !layout.orientation ? t('split.layoutGrid')
+                : layout.orientation === 'cols' ? t('split.layoutRows')
+                : t('split.layoutCols'),
+              onClick: () => {
+                // 三态循环: grid(null) → cols(横排) → rows(列排) → grid
+                // 原循环 null→cols→rows→cols→rows 从不回到 grid，且 cols
+                // 在某些 pane 数下与 grid 视觉重合，用户只看到 grid/rows。
+                const next = !layout.orientation ? 'cols'
+                  : layout.orientation === 'cols' ? 'rows'
+                  : null
+                layout.setOrientation(next)
+              },
+              style: { ...cornerBtnStyle() },
+            },
+              !layout.orientation ? h(GridIcon, { size: 12 })
+              : layout.orientation === 'cols' ? h(ColumnsIcon, { size: 12 })
+              : h(ShelfIcon, { size: 12 })
+            ),
           )
           : null,
         h('div', {
           ref: gridRef,
           style: {
             display: 'grid',
-            gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : `repeat(${cols}, ${colSizes.map(f => f + 'fr').join(' ')})`,
-            gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : `repeat(${rows}, ${rowSizes.map(f => f + 'fr').join(' ')})`,
-            // Shelf wrap: 'rows' stacks shelves vertically (new shelf when a
-            // pane no longer fits the min width); 'cols' fills a horizontal
-            // band (new column when a pane no longer fits the min height).
-            gridAutoFlow: shelf ? (layout.orientation === 'cols' ? 'column' : 'row') : undefined,
+            gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : colSizes.map(f => f + 'fr').join(' '),
+            gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : rowSizes.map(f => f + 'fr').join(' '),
+            // Shelf wrap: 横排 ('cols') fills left-to-right (row), wrapping
+            // down to the next row; 列排 ('rows') fills top-to-bottom
+            // (column), wrapping right to the next column.
+            gridAutoFlow: shelf ? (layout.orientation === 'cols' ? 'row' : 'column') : undefined,
             height: '100%', width: '100%', gap: 8, padding: 8, background: 'var(--dsh-bg, #1e1e1e)',
             boxSizing: 'border-box',
           },
@@ -1375,7 +1440,7 @@ window.__ModuleLoader__.load({
         layout.ids.map((id, index) => h(GridItem, {
           key: id,
           index,
-          placement: placements[index] || { row: 0, col: 0, colSpan: 1 },
+          placement: shelf ? undefined : (placements[index] || { row: 0, col: 0, colSpan: 1 }),
           id,
           pane: paneRefs[id],
           renderPane,
@@ -1398,6 +1463,7 @@ window.__ModuleLoader__.load({
           // the booth) instead of jumping to the editor via openSession.
           onSwitch: (sessionId) => layout.replaceAt(index, sessionId),
           onClearBooth: onClearBooth,
+          onRequestClearBooth: onRequestClearBooth,
           switchUnavailable: switchUnavailable,
           t,
           SessionProvider,
@@ -1493,6 +1559,47 @@ window.__ModuleLoader__.load({
             h('div', { className: 'spinner' }),
           )
           : null,
+        // Clear-the-whole-booth confirm dialog (long-press "-"). Covers the
+        // ENTIRE booth via the outer position:relative container, not just a
+        // single pane. zIndex 100 puts it above panes, toggle, and picker.
+        confirmClear ? h('div', {
+          onClick: (e) => e.stopPropagation(),
+          style: {
+            position: 'absolute', inset: 0, zIndex: 100, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)',
+          },
+        },
+          h('div', {
+            style: {
+              minWidth: 280, maxWidth: '80%', padding: 18, borderRadius: 12,
+              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', gap: 10,
+            },
+          },
+            h('div', { style: { fontSize: 15, fontWeight: 600 } }, t('split.clearBoothTitle')),
+            h('div', { style: { fontSize: 13, opacity: 0.7, lineHeight: 1.5 } }, t('split.clearBoothMsg')),
+            h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 } },
+              h('button', {
+                className: 'dshSplitBtn',
+                onClick: () => setConfirmClear(false),
+                style: {
+                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
+                  border: '1px solid var(--dsh-border, #333)', background: 'transparent',
+                  color: 'var(--dsh-fg, #eee)', fontSize: 13,
+                },
+              }, t('split.clearBoothCancel')),
+              h('button', {
+                className: 'dshSplitBtn',
+                onClick: () => { setConfirmClear(false); onClearBooth() },
+                style: {
+                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer', border: 'none',
+                  background: '#e5484d', color: '#fff', fontSize: 13, fontWeight: 500,
+                },
+              }, t('split.clearBoothConfirm')),
+            ),
+          ),
+        ) : null,
       )
     }
 
@@ -1503,7 +1610,7 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel, resize }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, onRequestClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel, resize }) {
       return h('div', {
         'data-split-pane': index,
         onPointerDown: onDragStart,
@@ -1524,6 +1631,7 @@ window.__ModuleLoader__.load({
               renderPane(pane.ref, id, {
                 onAdd,
                 onRemove,
+                onRequestClearBooth,
                 status,
                 title,
                 pillWidth,
@@ -1542,7 +1650,7 @@ window.__ModuleLoader__.load({
           const rCol = _rz.col
           const rRow = _rz.row
           const showV = _rz.shelf ? (_rz.orientation === "cols" && rCol < _rz.cols - 1) : (rCol < _rz.cols - 1)
-          const showH = _rz.shelf ? (_rz.orientation === "rows" && rRow < _rz.rows - 1) : (rRow < _rz.rows - 1)
+          const showH = rRow < _rz.rows - 1
           const handles = []
           if (showV) handles.push(h("div", {
             key: 'rv',
@@ -1570,14 +1678,13 @@ window.__ModuleLoader__.load({
      * session (already established by the surrounding SessionProvider), plus
      * add/remove corner controls in the top-right.
      */
-    function PaneContentBase({ renderFactorySlot, onAdd, onRemove, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, onClearBooth, switchUnavailable, t }) {
+    function PaneContentBase({ renderFactorySlot, onAdd, onRemove, onRequestClearBooth, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, onClearBooth, switchUnavailable, t }) {
       const [switchOpen, setSwitchOpen] = useState(false)
-      // Long-press "-" -> confirm before clearing the WHOLE booth. A quick
+      // Long-press "-" -> arm the clear-booth confirm at SplitPanel level. A quick
       // tap still removes just THIS pane. useLongPress arms a timer on
-      // pointerdown; if it fires we show the confirm dialog instead of
-      // removing the single session.
-      const [confirmClear, setConfirmClear] = useState(false)
-      const longPress = useLongPress(() => setConfirmClear(true), 500)
+      // pointerdown; if it fires we call onRequestClearBooth() to show the
+      // full-booth overlay instead of removing the single session.
+      const longPress = useLongPress(() => { if (typeof onRequestClearBooth === 'function') onRequestClearBooth() }, 500)
       // Close the session-switcher dropdown on any click outside the floating
       // title window (the dropdown is anchored inside it). A document-level
       // mousedown listener checks whether the event target is contained by
@@ -1585,6 +1692,10 @@ window.__ModuleLoader__.load({
       // conventional dropdown behavior and keeps the switch list from
       // lingering open after the user clicks elsewhere.
       const titleRef = React.useRef(null)
+      // Ref for the composer wrapper: lets the toolbar buttons query the
+      // live DOM for the composer's input element ([data-composer-input]
+      // or contenteditable) regardless of how DSH renders it internally.
+      const composerWrapRef = React.useRef(null)
       React.useEffect(() => {
         if (!switchOpen) return
         const onDocDown = (e) => {
@@ -1627,6 +1738,7 @@ window.__ModuleLoader__.load({
           },
             // Workspace name crumb (tertiary). Click jumps to this session.
             h('button', {
+              className: 'dshSplitBtn',
               onClick: onJump,
               title: t('split.jump'),
               style: {
@@ -1644,6 +1756,7 @@ window.__ModuleLoader__.load({
             // vertical session list at the split boundary.
             hasSessionPart
               ? h('button', {
+                className: 'dshSplitBtn',
                 onClick: (e) => { e.stopPropagation(); setSwitchOpen(v => !v) },
                 title: t('split.switchSession'),
                 style: {
@@ -1672,6 +1785,7 @@ window.__ModuleLoader__.load({
                   const active = sid === workspace.currentSessionId
                   return h('button', {
                     key: sid,
+                    className: 'dshSplitBtn',
                     onClick: (e) => {
                       e.stopPropagation()
                       setSwitchOpen(false)
@@ -1716,9 +1830,10 @@ window.__ModuleLoader__.load({
             },
               h('button', {
                 type: 'button',
+                className: 'dshSplitBtn',
                 // Tooltip documents BOTH gestures: tap removes this pane,
-                // long-press opens the clear-the-whole-booth confirm.
-                title: t('split.removeSession') + ' / ' + t('split.clearBoothTitle'),
+                // long-press clears the entire booth.
+                title: t('split.removeSession') + ' / ' + t('split.longPressClearAll'),
                 'aria-label': t('split.removeSession'),
                 onPointerDown: (e) => { if (e.button === 0) longPress.start() },
                 onPointerUp: () => longPress.cancel(),
@@ -1738,6 +1853,7 @@ window.__ModuleLoader__.load({
               }),
               h('button', {
                 type: 'button',
+                className: 'dshSplitBtn',
                 title: t('split.addSession'), 'aria-label': t('split.addSession'),
                 onClick: (e) => { e.stopPropagation(); e.preventDefault(); onAdd() },
                 style: cornerBtnStyle(),
@@ -1751,49 +1867,11 @@ window.__ModuleLoader__.load({
         // height, which clips the composer and breaks scrolling. No outer
         // scroller here: the factory owns its own [data-conversation-scroll]
         // scrollport and native bottom-follow.
-        h('div', { style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', position: 'relative', height: '100%' } },
+        h('div', { ref: composerWrapRef, style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', position: 'relative', height: '100%' } },
           renderFactorySlot('conversation.content', { variant: 'split', phase: 'active', hero: false }, {
             slots: {},
           }),
         ),
-        // Clear-the-whole-booth confirm dialog (long-press "-"). Overlays the
-        // pane so it reads as a blocking confirm, not a side panel.
-        confirmClear ? h('div', {
-          onClick: (e) => e.stopPropagation(),
-          style: {
-            position: 'absolute', inset: 0, zIndex: 60, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(2px)',
-          },
-        },
-          h('div', {
-            style: {
-              minWidth: 280, maxWidth: '80%', padding: 18, borderRadius: 12,
-              background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', gap: 10,
-            },
-          },
-            h('div', { style: { fontSize: 15, fontWeight: 600 } }, t('split.clearBoothTitle')),
-            h('div', { style: { fontSize: 13, opacity: 0.7, lineHeight: 1.5 } }, t('split.clearBoothMsg')),
-            h('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 6 } },
-              h('button', {
-                onClick: () => setConfirmClear(false),
-                style: {
-                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer',
-                  border: '1px solid var(--dsh-border, #333)', background: 'transparent',
-                  color: 'var(--dsh-fg, #eee)', fontSize: 13,
-                },
-              }, t('split.clearBoothCancel')),
-              h('button', {
-                onClick: () => { setConfirmClear(false); if (typeof onClearBooth === 'function') onClearBooth() },
-                style: {
-                  padding: '6px 14px', borderRadius: 6, cursor: 'pointer', border: 'none',
-                  background: '#e5484d', color: '#fff', fontSize: 13, fontWeight: 500,
-                },
-              }, t('split.clearBoothConfirm')),
-            ),
-          ),
-        ) : null,
       )
     }
 
@@ -1876,13 +1954,14 @@ window.__ModuleLoader__.load({
           // {cols:[],rows:[]} — per-track flex weights. null = even 1fr.
           sizes: null,
           listeners: new Set(),
+          dismissed: false,
           // Arrow-function methods so `this` is always the layout object even
           // when the methods are passed as bare references (e.g. into the
           // SplitPanel prop object: `{ set: layout.set, remove: layout.remove }`).
           // Calling `layout.remove(id)` there would otherwise bind `this` to
           // the prop wrapper, whose `listeners` is undefined and `emit()` throws.
-          set: (ids) => { layout.initialized = true; layout.ids = ids; writeStoredIds(ids); layout.emit() },
-          remove: (id) => { layout.ids = layout.ids.filter(x => x !== id); writeStoredIds(layout.ids); layout.emit() },
+          set: (ids) => { layout.initialized = true; layout.ids = ids; layout.dismissed = ids.length === 0; writeStoredIds(ids); layout.emit() },
+          remove: (id) => { layout.ids = layout.ids.filter(x => x !== id); layout.dismissed = layout.ids.length === 0; writeStoredIds(layout.ids); layout.emit() },
           addMissing: (ids) => {
             const next = layout.ids.slice()
             for (const id of ids) if (!next.includes(id)) next.push(id)
@@ -1914,23 +1993,22 @@ window.__ModuleLoader__.load({
           },
           // Cancel: mark configured so the picker never auto-reopens, but
           // keep ids empty (no layout persisted yet).
-          dismiss: () => { layout.initialized = true; layout.emit() },
+          dismiss: () => { layout.initialized = true; layout.dismissed = true; layout.emit() },
           setMode: (mode) => {
             if (!LAYOUT_MODES.includes(mode)) return
             layout.mode = mode
             writeStoredMode(mode)
             layout.emit()
           },
-          // Shelf layout orientation: 'rows' = 横排 (horizontal shelves that
-          // stack vertically, like a bookshelf); 'cols' = 列排 (vertical
-          // columns that fill a horizontal band). Each pane's minimum size is
-          // the "-+" float window plus a margin, so the number of panes per
-          // shelf/column is derived from the measured available size - there is
-          // no fixed cap.
+          // Shelf layout orientation: 'cols' = 横排 (horizontal balanced
+          // grid that wraps to the next row, like a wide bookshelf); 'rows'
+          // = 列排 (vertical single-column stack, one pane per row).
+          // 横排 ('cols') computes a balanced grid (ceil(sqrt(n)) columns)
+          // so 5 panes give a 3×2 wrap, NOT 5-in-a-row.
           setOrientation: (o) => {
-            if (o !== 'rows' && o !== 'cols') return
-            layout.orientation = o
-            writeStoredOrientation(o)
+            if (o !== 'rows' && o !== 'cols' && o !== null && o !== undefined) return
+            layout.orientation = o || null
+            writeStoredOrientation(o || null)
             layout.emit()
           },
           // Per-track flex weights (cols/rows arrays). Clamp min via caller.
@@ -1980,25 +2058,29 @@ window.__ModuleLoader__.load({
             const [ids, setIds] = useState(layout.ids)
             const [mode, setMode] = useState(layout.mode)
             const [orientation, setOrientation] = useState(layout.orientation)
+            const [sizes, setSizes] = useState(layout.sizes)
+            const [dismissed, setDismissed] = useState(layout.dismissed)
             useEffect(() => layout.subscribe((next) => {
               setIds(next)
               setMode(layout.mode)
-              // Orientation must re-render too: the shelf layout + the
-              // toggle icon highlight both derive from layout.orientation,
-              // and the layout prop reads it at render time. Without this a
-              // click only updates the stored value and the panel keeps the
-              // old orientation until an unrelated re-render.
               setOrientation(layout.orientation)
+              setSizes(layout.sizes)
+              setDismissed(layout.dismissed)
             }), [])
             const { SessionProvider, renderFactorySlot } = props
-            // Zero windows -> return to the normal editor (the default
-            // "conversation" main panel). selectPanel(null) is the same call
-            // the workspace service uses to clear the main view.
+            // Reset dismissed on mount: the user is opening the booth, so we
+            // should NOT immediately switch back to the editor.
+            useEffect(() => { layout.dismissed = false; setDismissed(false) }, [])
+            // When all sessions are gone AND the booth was dismissed/cleared,
+            // return to the normal editor. Skipped on first mount (the reset
+            // above just cleared dismissed).
+            const firstRun = useRef(true)
             useEffect(() => {
-              if (ids.length === 0 && layout.initialized) {
+              if (firstRun.current) { firstRun.current = false; return }
+              if (ids.length === 0 && layout.initialized && dismissed) {
                 try { ctx.layout.selectPanel(null) } catch { /* not registered yet */ }
               }
-            }, [ids.length, layout.initialized])
+            }, [ids.length, layout.initialized, dismissed])
             // Wrap in the error boundary so any render throw inside SplitPanel
             // or a pane shows readable text + a way back instead of a blank
             // black panel.
@@ -2017,7 +2099,10 @@ window.__ModuleLoader__.load({
                 orientation: orientation,
                 setOrientation: layout.setOrientation,
                 setMode: layout.setMode,
+                sizes: sizes,
+                setSizes: layout.setSizes,
                 dismiss: layout.dismiss,
+                dismissed,
               },
               t,
               wsDisplay,
@@ -2030,6 +2115,7 @@ window.__ModuleLoader__.load({
                   renderFactorySlot,
                   onAdd: actions.onAdd,
                   onRemove: actions.onRemove,
+                  onRequestClearBooth: actions.onRequestClearBooth,
                   status: actions.status,
                   title: actions.title,
                   pillWidth: actions.pillWidth,
@@ -2068,26 +2154,53 @@ window.__ModuleLoader__.load({
             }, function BoothAddButton({ sessionId }) {
               const [ids, setIds] = useState(layout.ids)
               const inBooth = ids.includes(sessionId)
+              const [toast, setToast] = useState(null)
               useEffect(() => layout.subscribe((next) => setIds(next)), [])
-              return h('button', {
-                type: 'button',
-                title: inBooth ? t('split.inBooth') : t('split.addToBooth'),
-                'aria-label': inBooth ? t('split.inBoothAria') : t('split.addToBoothAria'),
-                onClick: () => {
-                  if (sessionId === undefined || inBooth) return
-                  layout.addMissing([sessionId])
-                  try { ctx.layout.selectPanel('splitview') } catch { /* not registered yet */ }
-                },
-                style: {
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
-                  border: 'none', background: 'transparent',
-                  color: 'var(--dsh-fg, #eee)', opacity: 0.75, padding: 0,
-                  transition: 'background 120ms ease, opacity 120ms ease',
-                },
-                onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--dsh-hover, rgba(255,255,255,0.08))'; e.currentTarget.style.opacity = '1' },
-                onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.75' },
-              }, h(PlusIcon, { size: 14 }))
+              useEffect(() => {
+                if (!toast) return
+                const timer = setTimeout(() => setToast(null), 2500)
+                return () => clearTimeout(timer)
+              }, [toast])
+              return h('div', { style: { position: 'relative', display: 'inline-flex', alignItems: 'center' } },
+                h('button', {
+                  type: 'button',
+                  className: 'dshSplitBtn',
+                  title: inBooth ? t('split.removeFromBooth') : t('split.addToBooth'),
+                  'aria-label': inBooth ? t('split.removeFromBooth') : t('split.addToBooth'),
+                  onClick: () => {
+                    if (sessionId === undefined) return
+                    if (inBooth) {
+                      layout.remove(sessionId)
+                      setToast({ msg: t('split.removedFromBooth'), type: 'success' })
+                    } else {
+                      layout.addMissing([sessionId])
+                      setToast({ msg: t('split.addedToBooth'), type: 'success' })
+                    }
+                  },
+                  style: {
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 28, height: 28, borderRadius: 6, cursor: 'pointer',
+                    border: 'none', background: 'transparent',
+                    color: 'var(--dsh-fg, #eee)', opacity: 0.75, padding: 0,
+                    transition: 'background 120ms ease, opacity 120ms ease',
+                  },
+                  onMouseEnter: (e) => { e.currentTarget.style.background = 'var(--dsh-hover, rgba(255,255,255,0.08))'; e.currentTarget.style.opacity = '1' },
+                  onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.75' },
+                }, inBooth ? h(MinusIcon, { size: 14 }) : h(PlusIcon, { size: 14 })),
+                toast
+                  ? h('div', {
+                      style: {
+                        position: 'absolute', top: '50%', left: 'calc(100% + 6px)',
+                        transform: 'translateY(-50%)',
+                        background: 'var(--dsh-accent, #4f8cff)', color: '#fff',
+                        padding: '3px 10px', borderRadius: 6, fontSize: 12,
+                        whiteSpace: 'nowrap', pointerEvents: 'none',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                        animation: 'dshSplitToastIn 200ms ease',
+                      },
+                    }, toast.msg)
+                  : null,
+              )
             })
           })
         } catch (e) { console.error('[session-booth] header-action registration failed:', e) }

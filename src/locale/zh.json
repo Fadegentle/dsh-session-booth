@@ -19,6 +19,10 @@
     "ungrouped": "未分组",
     "empty": "暂无会话",
     "emptyAdd": "添加会话",
-    "recent": "最近"
+    "recent": "最近",
+    "addToBooth": "加入会话廊",
+    "addedToBooth": "已加入会话廊",
+    "removeFromBooth": "移出会话廊",
+    "removedFromBooth": "已移出会话廊"
   }
 }
