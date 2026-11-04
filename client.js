@@ -280,13 +280,13 @@ window.__ModuleLoader__.load({
 
     function GridIcon({ size = 18 }) {
       return h('svg', {
-        width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+        width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
         stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
         strokeLinejoin: 'round', 'aria-hidden': 'true',
       },
-        h('rect', { x: 3, y: 4, width: 18, height: 16, rx: 2 }),
-        h('line', { x1: 12, y1: 4, x2: 12, y2: 20 }),
-        h('line', { x1: 3, y1: 12, x2: 21, y2: 12 }),
+        h('rect', { x: 2, y: 3, width: 12, height: 10, rx: 1.5 }),
+        h('line', { x1: 8, y1: 3, x2: 8, y2: 13 }),
+        h('line', { x1: 2, y1: 8, x2: 14, y2: 8 }),
       )
     }
 
@@ -379,29 +379,27 @@ window.__ModuleLoader__.load({
 
     // Bookshelf glyph: two horizontal shelves (used to switch to the 横排
     // / shelf layout). Reads as "rows stacked vertically".
+    // 列排 toggle icon: two vertical lines.
     function ShelfIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
         stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
-        h('line', { x1: 2, y1: 5.5, x2: 14, y2: 5.5 }),
-        h('line', { x1: 2, y1: 11, x2: 14, y2: 11 }),
-        h('rect', { x: 3, y: 2, width: 3, height: 3.5, rx: 0.5 }),
-        h('rect', { x: 3, y: 7.5, width: 3, height: 3.5, rx: 0.5 }),
+        h('line', { x1: 5, y1: 2, x2: 5, y2: 14 }),
+        h('line', { x1: 11, y1: 2, x2: 11, y2: 14 }),
       )
     }
 
-    // Column-split toggle icon: two vertical panes (used when the layout is in
-    // 'grid' mode to offer switching to 'columns').
+    // 横排 toggle icon: two horizontal lines.
     function ColumnsIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
         stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
-        h('line', { x1: 5, y1: 3, x2: 5, y2: 13 }),
-        h('line', { x1: 11, y1: 3, x2: 11, y2: 13 }),
+        h('line', { x1: 2, y1: 5, x2: 14, y2: 5 }),
+        h('line', { x1: 2, y1: 11, x2: 14, y2: 11 }),
       )
     }
 
@@ -650,19 +648,32 @@ window.__ModuleLoader__.load({
     // Grid layout (等宽均分): 行数 = "小于等于 n 的最大平方数"的平方根
     // (floor(sqrt(n)))。9 → 3 行 (3²=9)；8 → 2 行 (4≤8<9)；6 → 2 行。
     // 每行 pane 数 = floor(n/行数)，不能整除时上小下大 (后几行多 1 个)：
-    // 7 → 上3下4；5 → 上2下3。每行等宽 (colSpan=1, repeat(cols,1fr))，
-    // 不再用阶梯不等宽。返回 { rows, totalCols, placements }。
+    // 7 → 上3下4；5 → 上2下3。
+    // 列数取各行 pane 数的 LCM（最小公倍数），使每行的 pane 都能用整数
+    // colSpan 填满整行宽：5 → LCM(2,3)=6 列，上排各 span 3（50%），下排各
+    // span 2（33%）。返回 { rows, totalCols, placements }。
+    function gcd(a, b) { return b ? gcd(b, a % b) : a }
+    function lcm(a, b) { return a * b / gcd(a, b) }
     function computeGrid(n) {
       if (n <= 1) return { rows: 1, totalCols: 1, placements: [{ row: 0, col: 0, colSpan: 1 }] }
       const rows = Math.max(1, Math.floor(Math.sqrt(n)))
       const base = Math.floor(n / rows)
       const rem = n % rows
-      const totalCols = base + (rem > 0 ? 1 : 0)
+      // Collect per-row pane counts, then take their LCM as the column count.
+      const counts = []
+      for (let r = 0; r < rows; r++) {
+        counts.push(base + (r >= rows - rem ? 1 : 0))
+      }
+      let totalCols = 1
+      for (const c of counts) totalCols = lcm(totalCols, c)
+      // Each pane in a row spans totalCols/count columns, starting at
+      // p*(totalCols/count) so all panes together tile the full row width.
       const placements = []
       for (let r = 0; r < rows; r++) {
-        const count = base + (r >= rows - rem ? 1 : 0)
+        const count = counts[r]
+        const colSpan = totalCols / count
         for (let p = 0; p < count; p++) {
-          placements.push({ row: r, col: p, colSpan: 1 })
+          placements.push({ row: r, col: p * colSpan, colSpan })
         }
       }
       return { rows, totalCols, placements }
@@ -695,26 +706,15 @@ window.__ModuleLoader__.load({
     function isShelfOrientation(o) { return o === 'rows' || o === 'cols' }
 
     // Grid track counts for the current orientation.
-    // 横排 ('cols'): a balanced grid that wraps naturally — columns =
-    // ceil(sqrt(n)), rows = ceil(n/cols). For 5 panes this gives a 3×2
-    // grid (上3下2), NOT 5-in-a-row. gridAutoFlow:'row' fills left-to-right.
-    // 列排 ('rows'): one pane per row, rows stack vertically (strict stack).
+    // 横排 ('cols'): columns = ceil(sqrt(n)), rows = ceil(n/cols).
+    // 列排 ('rows'): one pane per row, rows stack vertically.
     function shelfGrid(n, orientation) {
       if (n <= 0 || !isShelfOrientation(orientation)) return null
       if (orientation === 'cols') {
-        // 横排: balanced wrapping grid, not 5-in-a-row.
-        // 完美填充时 (cols*rows==n，如 4→2×2、6→3×2、9→3×3) grid(staircase)
-        // 也退化成等宽网格，视觉与横排完全重合，用户切过去看着像没变——
-        // 这就是"只有 grid 和 rows 没有 cols"的根因。多取一列变成"上多下
-        // 少"，与 grid 的"上少下多"区分。n<=2 时横排本质就是并排，不加列
-        // 以免出现空列。
-        let cols = Math.max(1, Math.ceil(Math.sqrt(n)))
-        const rows0 = Math.ceil(n / cols)
-        if (cols * rows0 === n && n > 2) cols += 1
+        const cols = Math.max(1, Math.ceil(Math.sqrt(n)))
         const rows = Math.ceil(n / cols)
         return { rows, totalCols: cols }
       }
-      // 列排: one pane per row, rows stack vertically.
       return { rows: n, totalCols: 1 }
     }
 
@@ -1407,9 +1407,7 @@ window.__ModuleLoader__.load({
                 : layout.orientation === 'cols' ? t('split.layoutRows')
                 : t('split.layoutCols'),
               onClick: () => {
-                // 三态循环: grid(null) → cols(横排) → rows(列排) → grid
-                // 原循环 null→cols→rows→cols→rows 从不回到 grid，且 cols
-                // 在某些 pane 数下与 grid 视觉重合，用户只看到 grid/rows。
+                // 三态循环: grid → 横排 → 列排 → grid
                 const next = !layout.orientation ? 'cols'
                   : layout.orientation === 'cols' ? 'rows'
                   : null
@@ -1477,8 +1475,9 @@ window.__ModuleLoader__.load({
           resize: {
             cols, rows, index, shelf, orientation: layout.orientation,
             col: colOf(index), row: rowOf(index),
+            colSpan: placements[index] ? placements[index].colSpan : 1,
             resizing,
-            startCol: startResize('col', colOf(index)),
+            startCol: startResize('col', colOf(index) + (placements[index] ? placements[index].colSpan : 1) - 1),
             startRow: startResize('row', rowOf(index)),
           },
 
@@ -1649,7 +1648,7 @@ window.__ModuleLoader__.load({
           const _rz = resize
           const rCol = _rz.col
           const rRow = _rz.row
-          const showV = _rz.shelf ? (_rz.orientation === "cols" && rCol < _rz.cols - 1) : (rCol < _rz.cols - 1)
+          const showV = _rz.shelf ? (_rz.orientation === "cols" && rCol < _rz.cols - 1) : (rCol + (_rz.colSpan || 1) < _rz.cols)
           const showH = rRow < _rz.rows - 1
           const handles = []
           if (showV) handles.push(h("div", {
@@ -1960,8 +1959,8 @@ window.__ModuleLoader__.load({
           // SplitPanel prop object: `{ set: layout.set, remove: layout.remove }`).
           // Calling `layout.remove(id)` there would otherwise bind `this` to
           // the prop wrapper, whose `listeners` is undefined and `emit()` throws.
-          set: (ids) => { layout.initialized = true; layout.ids = ids; layout.dismissed = ids.length === 0; writeStoredIds(ids); layout.emit() },
-          remove: (id) => { layout.ids = layout.ids.filter(x => x !== id); layout.dismissed = layout.ids.length === 0; writeStoredIds(layout.ids); layout.emit() },
+          set: (ids) => { layout.initialized = true; layout.ids = ids; writeStoredIds(ids); layout.emit() },
+          remove: (id) => { layout.ids = layout.ids.filter(x => x !== id); writeStoredIds(layout.ids); layout.emit() },
           addMissing: (ids) => {
             const next = layout.ids.slice()
             for (const id of ids) if (!next.includes(id)) next.push(id)

@@ -92,6 +92,10 @@ session-booth/
 
 ## 📝 Changelog
 
+### v0.3.5
+
+- 🔲 Fixed grid rows not filling the full width: the column count is now the LCM (least common multiple) of each row's pane count, so every row's panes tile the entire width with integer colSpan (5 sessions → 2 top spanning 50% each, 3 bottom spanning ~33% each — no more empty cells).
+
 ### v0.3.4
 
 - 🗑️ Removed the guide UI (icon + title + "Add sessions" button) shown when no sessions are in the booth; the session picker now opens directly.
