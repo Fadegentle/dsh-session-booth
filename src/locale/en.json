@@ -23,6 +23,7 @@
     "addToBooth": "Add to Session Booth",
     "addedToBooth": "Added to Session Booth",
     "removeFromBooth": "Remove from Session Booth",
-    "removedFromBooth": "Removed from Session Booth"
+    "removedFromBooth": "Removed from Session Booth",
+    "layoutReset": "Reset to default widths"
   }
 }

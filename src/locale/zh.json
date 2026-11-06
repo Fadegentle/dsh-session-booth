@@ -23,6 +23,7 @@
     "addToBooth": "加入会话廊",
     "addedToBooth": "已加入会话廊",
     "removeFromBooth": "移出会话廊",
-    "removedFromBooth": "已移出会话廊"
+    "removedFromBooth": "已移出会话廊",
+    "layoutReset": "已重置为默认宽度"
   }
 }

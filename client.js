@@ -727,9 +727,10 @@ window.__ModuleLoader__.load({
 
       const [picker, setPicker] = useState(null) // {mode:'initial'|'add', exclude:Set}
       const [paneRefs, setPaneRefs] = useState({}) // id -> {ref}
-      // Long-press the layout toggle button to reset all track widths/heights
-      // to the default (equal) distribution. Clears stored sizes too.
-      const toggleLongPress = useLongPress(() => { layout.resetSizes() }, 500)
+      // Long-press the layout toggle button (500ms) to reset all track
+      // widths/heights to the default (equal) distribution. Clears stored
+      // sizes too, and shows a toast for feedback.
+      const toggleLongPress = useLongPress(() => { layout.resetSizes(); setToast({ msg: t('split.layoutReset') }) }, 500)
       // Lazy-mount: panes are heavy (each mounts a full ConversationContent
       // with a Lexical composer editor). Mounting N at once blocks the first
       // paint. We mount the FIRST pane immediately, then advance one pane per
@@ -748,6 +749,12 @@ window.__ModuleLoader__.load({
       // Managed at SplitPanel level so the overlay covers the entire booth,
       // not a single pane.
       const [confirmClear, setConfirmClear] = useState(false)
+      const [toast, setToast] = useState(null)
+      useEffect(() => {
+        if (!toast) return
+        const timer = setTimeout(() => setToast(null), 2500)
+        return () => clearTimeout(timer)
+      }, [toast])
       useEffect(() => {
         if (layout.ids.length === 0) { setShowLoading(true); setLoadingDone(false); loadingShown.current = false; return }
         const allMounted = layout.ids.every(id => mounted.has(id))
@@ -1431,6 +1438,18 @@ window.__ModuleLoader__.load({
               : h(ShelfIcon, { size: 12 })
             ),
           )
+          : null,
+        toast
+          ? h('div', {
+              style: {
+                position: 'absolute', top: 82, right: 17, zIndex: 30,
+                background: 'var(--dsh-accent, #4f8cff)', color: '#fff',
+                padding: '3px 10px', borderRadius: 6, fontSize: 12,
+                whiteSpace: 'nowrap', pointerEvents: 'none',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+                animation: 'dshSplitToastIn 200ms ease',
+              },
+            }, toast.msg)
           : null,
         h('div', {
           ref: gridRef,
@@ -2116,6 +2135,7 @@ window.__ModuleLoader__.load({
                 setMode: layout.setMode,
                 sizes: sizes,
                 setSizes: layout.setSizes,
+                resetSizes: layout.resetSizes,
                 dismiss: layout.dismiss,
                 dismissed,
               },
