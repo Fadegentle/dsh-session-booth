@@ -770,18 +770,23 @@ window.__ModuleLoader__.load({
         }
       }, [layout.ids.join(','), mounted.size])
 
-      // Drag-to-reorder (like app icons): long-press an empty pane area to
-      // lift it, then drag to a new position. dragIndex = the lifted pane's
-      // layout index; dragOver = the index it would land on; dragging gates
-      // pointer capture so a stray release can't drop it in the wrong place.
+      // Drag-to-reorder: grab a pane (drag from its title bar, or long-press
+      // anywhere else on it) and drop it onto another pane to swap positions.
+      // dragIndex = the lifted pane's layout index; dragOver = the pane the
+      // pointer is currently over. All gesture handling happens through NATIVE
+      // CAPTURE listeners on the grid container (mount effect below), so inner
+      // consumer components (Lexical editors etc.) that stopPropagation their
+      // own React events cannot swallow the gesture.
       const [dragIndex, setDragIndex] = useState(null)
-      // Measured pane-per-shelf count for the shelf layout (横排 / 纵排).
-      // Declared early so the layout derivation below can read it.
-
       const [dragOver, setDragOver] = useState(null)
-      const dragTimer = useRef(null)
-      const dragStart = useRef(null)
-      const draggingRef = useRef(false)
+      const dragGesture = useRef(null) // live gesture { index, x, y, started, timer }
+      const dragOverRef = useRef(null) // mirrors dragOver to skip no-op re-renders
+      const suppressClickUntil = useRef(0) // swallow the click right after a real drop
+      // Latest-ref pattern: the listeners below are attached ONCE, so they read
+      // the current layout prop object (rebuilt every render by SplitViewPanel's
+      // state sync) from this ref instead of a stale first-render closure.
+      const layoutRef = useRef(layout)
+      layoutRef.current = layout
 
       // Card fade-out: when a pane is removed we animate its card's opacity to
       // 0 over 200ms, then actually drop it from the layout so the grid
@@ -809,10 +814,17 @@ window.__ModuleLoader__.load({
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [])
 
-      // Reset any in-flight drag when the layout changes under us.
+      // If the layout changes under an in-flight drag (a session added or
+      // removed from elsewhere while dragging), drop the gesture so we never
+      // splice a stale index into the id list.
       useEffect(() => {
-        if (dragIndex !== null && !layout.ids.includes(dragIndex)) {
-          setDragIndex(null); setDragOver(null)
+        if (dragGesture.current) {
+          if (dragGesture.current.timer) clearTimeout(dragGesture.current.timer)
+          dragGesture.current = null
+          if (dragOverRef.current !== null) {
+            dragOverRef.current = null
+            setDragIndex(null); setDragOver(null)
+          }
         }
       }, [layout.ids.join(',')])
 
@@ -1169,74 +1181,163 @@ window.__ModuleLoader__.load({
 
       // When ids.length === 0 the picker opens directly (see useEffect above).
 
-      // Long-press to lift. We only start a drag if the pointer stays still
-      // for the threshold AND the press wasn't on an interactive control.
-      const startDragPress = (index) => (e) => {
-        if (e.button !== 0) return
-        const target = e.target
-        if (target && (target.closest('button') || target.closest('a') || target.closest('input,textarea,select'))) return
-        // Block native text-selection from the very start of the press: the
-        // conversation content inside the pane otherwise hijacks the
-        // long-press and turns the drag into a cursor highlight (滑选).
-        e.preventDefault()
-        // Belt-and-braces: a panes-wide user-select guard + clear any
-        // selection that already exists before the drag begins.
-        const paneEl = e.currentTarget
-        try { paneEl.style.userSelect = 'none'; paneEl.style.webkitUserSelect = 'none' } catch { /* noop */ }
-        try { if (window.getSelection) window.getSelection().removeAllRanges() } catch { /* noop */ }
-        dragStart.current = { x: e.clientX, y: e.clientY, index }
-        draggingRef.current = false
-        clearTimeout(dragTimer.current)
-        dragTimer.current = setTimeout(() => {
-          draggingRef.current = true
-          try { if (window.getSelection) window.getSelection().removeAllRanges() } catch { /* noop */ }
-          setDragIndex(index)
-          setDragOver(index)
-        }, 260)
+      // ---- Drag-to-reorder engine ----
+      // Two ways to LIFT a pane for a reorder:
+      //   1. Press and drag from the pane's title bar (data-split-bar): the lift
+      //      starts on the first ~3px of pointer movement (like grabbing a
+      //      window by its title — no hold required).
+      //   2. Long-press (220ms while the pointer stays still) anywhere else on
+      //      the pane: the pane lifts once the hold completes, so a quick
+      //      click or a text-drag never triggers it.
+      // Pressing anywhere inside a button / link / textbox / contenteditable
+      // NEVER arms the gesture (those controls keep their native behaviour).
+      // The whole gesture is handled by NATIVE CAPTURE-phase listeners on the
+      // grid container: inner consumer components (Lexical editor, chat
+      // bubbles) can swallow React-level pointer events with stopPropagation,
+      // but a capture-phase native listener on the ancestor runs first and
+      // is immune to that — the previous per-pane onPointerDown binding could
+      // simply never fire when started over conversation content.
+      const dropGesture = () => {
+        const gs = dragGesture.current
+        if (gs && gs.timer) clearTimeout(gs.timer)
+        dragGesture.current = null
+        if (gs && gs.started) {
+          dragOverRef.current = null
+          setDragIndex(null); setDragOver(null)
+          try {
+            const g = gridRef.current
+            if (g) { g.style.userSelect = ''; g.style.webkitUserSelect = '' }
+          } catch { /* noop */ }
+        }
       }
 
-      // If the pointer moves before the long-press fires, it's a click, not a drag.
-      // Release the panes-wide user-select guard (best-effort; panes are
-      // re-rendered each layout change so this is just to unblock hover/
-      // selection between drags).
-      const releaseSelectGuard = () => {
-        try {
-          const g = gridRef.current
-          if (g) g.querySelectorAll('[data-split-pane]').forEach(p => { p.style.userSelect = ''; p.style.webkitUserSelect = '' })
-        } catch { /* noop */ }
-      }
-      const cancelDragPress = () => {
-        clearTimeout(dragTimer.current)
-        draggingRef.current = false
-        releaseSelectGuard()
-      }
+      useEffect(() => {
+        const g = gridRef.current
+        if (!g) return undefined
 
-      const onDragMove = (index) => (e) => {
-        // While the lift is armed (before the 260ms fires) the press is
-        // still tracked: suppress the native selection that a moving
-        // pointer would otherwise paint over the conversation text.
-        if (dragStart.current) { try { e.preventDefault() } catch { /* noop */ } }
-        if (!draggingRef.current) return
-        try { e.preventDefault() } catch { /* noop */ }
-        // The pointermove event fires on the pane div itself (it has
-        // onPointerMove={onDragMove(index)} in GridItem). currentTarget is
-        // the pane, so we can read its index directly — much more reliable
-        // than elementFromPoint, which can hit a button/input inside the
-        // pane and fail the closest() lookup.
-        const el = e.currentTarget
-        if (el && el.dataset && el.dataset.splitPane !== undefined) {
-          setDragOver(Number(el.dataset.splitPane))
-        } else {
-          // Fallback: hit-test in case the event bubbled from a child.
-          const over = document.elementFromPoint(e.clientX, e.clientY)
-          if (over) {
-            const paneEl = over.closest('[data-split-pane]')
-            if (paneEl && paneEl.dataset.splitPane !== undefined) {
-              setDragOver(Number(paneEl.dataset.splitPane))
+        // Interactive controls own their own gesture — never a reorder.
+        const inInteractive = (t) => {
+          if (!t) return true
+          if (t.closest &&
+            (t.closest('button') || t.closest('a') ||
+              t.closest('input, textarea, select'))) return true
+          const cel = t.closest('[contenteditable]')
+          if (cel && String(cel.getAttribute('contenteditable') || '').toLowerCase() !== 'false') return true
+          return false
+        }
+        // Pane element (or null for gaps / toolbar areas) at the pointer.
+        const paneAt = (e) => {
+          const el = document.elementFromPoint(e.clientX, e.clientY)
+          return el && el.closest ? el.closest('[data-split-pane]') : null
+        }
+        const lift = (gs) => {
+          gs.started = true
+          try { g.style.userSelect = 'none'; g.style.webkitUserSelect = 'none' } catch { /* noop */ }
+          try { if (document.getSelection) document.getSelection().removeAllRanges() } catch { /* noop */ }
+          dragOverRef.current = gs.index
+          setDragIndex(gs.index)
+          setDragOver(gs.index)
+        }
+
+        const onDown = (e) => {
+          if (e.button !== 0) return
+          const t = e.target
+          if (inInteractive(t)) return
+          // Resize strips run their own pointer gesture — never a reorder.
+          if (t.closest('[data-split-resize]')) return
+          const paneEl = t.closest ? t.closest('[data-split-pane]') : null
+          if (!paneEl) return
+          const gs = { index: Number(paneEl.dataset.splitPane), x: e.clientX, y: e.clientY, started: false, timer: null }
+          dragGesture.current = gs
+          if (!t.closest('[data-split-bar]')) {
+            // Long-press zone: lift only if the pointer stays still 220ms.
+            gs.timer = setTimeout(() => {
+              if (dragGesture.current === gs) lift(gs)
+            }, 220)
+          }
+        }
+        const onMove = (e) => {
+          const gs = dragGesture.current
+          if (!gs) return
+          const dx = e.clientX - gs.x
+          const dy = e.clientY - gs.y
+          if (!gs.started) {
+            if (gs.timer) {
+              // Long-press armed; moving past the threshold means this is a
+              // click / text-selection, not a lift — abandon the gesture
+              // and leave selection/click behaviour untouched.
+              if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                if (gs.timer) clearTimeout(gs.timer)
+                dragGesture.current = null
+              }
+              return
+            }
+            // Title-bar press armed: the first movement lifts the pane.
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) lift(gs)
+            return
+          }
+          // Dragging: suppress any native text-selection on the way over.
+          try { e.preventDefault() } catch { /* noop */ }
+          const under = paneAt(e)
+          if (under) {
+            const i = Number(under.dataset.splitPane)
+            if (i !== dragOverRef.current) {
+              dragOverRef.current = i
+              setDragOver(i)
+            }
+          } else if (dragOverRef.current !== null) {
+            dragOverRef.current = null
+            setDragOver(null)
+          }
+        }
+        const onUp = (e) => {
+          const gs = dragGesture.current
+          if (!gs) return
+          let target = null
+          if (gs.started) {
+            target = paneAt(e)
+            // The click that fires right after a real drop would run the
+            // drop-pane's own click handlers (jump / switch listener) —
+            // swallow it briefly.
+            suppressClickUntil.current = Date.now() + 300
+          }
+          dropGesture()
+          if (gs.started && target && gs.index >= 0) {
+            const to = Number(target.dataset.splitPane)
+            if (to !== gs.index) {
+              const ids = layoutRef.current.ids.slice()
+              if (gs.index < ids.length && to >= 0 && to < ids.length) {
+                const [moved] = ids.splice(gs.index, 1)
+                // `to` indexes the ORIGINAL array; after removing the source
+                // the target shifted down by one if it was below the source.
+                const at = to > gs.index ? to - 1 : to
+                ids.splice(at, 0, moved)
+                layoutRef.current.set(ids)
+              }
             }
           }
         }
-      }
+        // Capture phase so the suppress-click runs before any target handler.
+        const onClickCapture = (e) => {
+          if (Date.now() < suppressClickUntil.current) {
+            e.stopPropagation()
+            e.preventDefault()
+          }
+        }
+
+        g.addEventListener('pointerdown', onDown, { capture: true })
+        g.addEventListener('pointermove', onMove, { capture: true })
+        g.addEventListener('pointerup', onUp, { capture: true })
+        g.addEventListener('pointercancel', onUp, { capture: true })
+        g.addEventListener('click', onClickCapture, { capture: true })
+        return () => {
+          g.removeEventListener('pointerdown', onDown, true)
+          g.removeEventListener('pointermove', onMove, true)
+          g.removeEventListener('pointerup', onUp, true)
+          g.removeEventListener('pointercancel', onUp, true)
+          g.removeEventListener('click', onClickCapture, true)
+        }
+      }, [])
 
       const gridRef = useRef(null)
 
@@ -1321,22 +1422,10 @@ window.__ModuleLoader__.load({
       // there is no per-shelf measurement to run. The grid box still exposes
       // gridRef for the drag handlers and the resize affordance.
 
-      const endDrag = () => {
-        clearTimeout(dragTimer.current)
-        releaseSelectGuard()
-        const from = dragIndex
-        const to = dragOver
-        draggingRef.current = false
-        dragStart.current = null
-        if (from !== null && to !== null && from !== to) {
-          const ids = layout.ids.slice()
-          const [moved] = ids.splice(from, 1)
-          ids.splice(to, 0, moved)
-          layout.set(ids)
-        }
-        setDragIndex(null)
-        setDragOver(null)
-      }
+      // The grid box still exposes gridRef — the drag engine and the resize
+      // affordance read the source/destination pane geometry through it.
+      // (The previous per-drag endDrag handler is gone: drop resolution now
+      // happens inside the capture-phase engine above.)
 
       // Ctrl+Tab / Ctrl+Shift+Tab cycles focus to the next/previous pane's
       // composer input (首尾衔接 — wraps at the ends). This mirrors the
@@ -1498,10 +1587,6 @@ window.__ModuleLoader__.load({
           mounted: mounted.has(id),
           dragIndex,
           dragOver,
-          onDragStart: startDragPress(index),
-          onDragMove: onDragMove(index),
-          onDragEnd: endDrag,
-          onDragCancel: cancelDragPress,
           resize: {
             cols, rows, index, shelf, orientation: layout.orientation,
             col: colOf(index), row: rowOf(index),
@@ -1639,17 +1724,19 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, onRequestClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, onDragStart, onDragMove, onDragEnd, onDragCancel, resize }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, onRequestClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, resize }) {
       return h('div', {
         'data-split-pane': index,
-        onPointerDown: onDragStart,
-        onPointerMove: onDragMove,
-        onPointerUp: onDragEnd,
-        onPointerLeave: onDragCancel,
+        // Drag feedback comes from dragIndex/dragOver + the capture-phase
+        // engine on the grid container (onDown/onMove/onUp there). This pane
+        // intentionally carries NO pointer handlers of its own — inner
+        // consumer components can't swallow a container-level gesture.
         style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0, gridColumn: placement ? `span ${placement.colSpan}` : undefined, gridRow: placement ? placement.row + 1 : undefined,
           borderRadius: 10, border: '1px solid var(--dsh-border, #333)',
-          transition: 'box-shadow 120ms ease, transform 120ms ease, opacity 200ms ease',
+          borderColor: dragIndex !== null && dragOver === index && dragIndex !== index ? 'var(--dsh-accent, #4f8cff)' : undefined,
+          transition: 'box-shadow 120ms ease, transform 120ms ease, opacity 200ms ease, border-color 120ms ease',
           boxShadow: dragIndex !== null && dragIndex === index ? '0 12px 32px rgba(0,0,0,0.6)' : '0 2px 8px rgba(0,0,0,0.2)',
+          transform: dragIndex !== null && dragIndex === index ? 'scale(1.03)' : undefined,
           zIndex: dragIndex !== null && dragIndex === index ? 30 : undefined,
           opacity: dragIndex !== null && dragOver === index && dragIndex !== index ? 0.6 : (removing ? 0 : 1),
           animation: removing ? 'dshSplitFadeOut 200ms ease forwards' : 'dshSplitFadeIn 200ms ease' },
@@ -1683,6 +1770,7 @@ window.__ModuleLoader__.load({
           const handles = []
           if (showV) handles.push(h("div", {
             key: 'rv',
+            'data-split-resize': 'col',
             style: { position: "absolute", right: -2, top: 4, bottom: 4, width: 6, cursor: "ew-resize", zIndex: 40, borderRadius: 3, background: _rz.resizing && _rz.resizing.axis === "col" ? "rgba(79,140,255,0.5)" : "transparent" },
             onMouseEnter: (e) => { e.currentTarget.style.background = "rgba(79,140,255,0.3)" },
             onMouseLeave: (e) => { if (!(_rz.resizing && _rz.resizing.axis === "col")) e.currentTarget.style.background = "transparent" },
@@ -1691,6 +1779,7 @@ window.__ModuleLoader__.load({
           }))
           if (showH) handles.push(h("div", {
             key: 'rh',
+            'data-split-resize': 'row',
             style: { position: "absolute", bottom: -2, left: 4, right: 4, height: 6, cursor: "ns-resize", zIndex: 40, borderRadius: 3, background: _rz.resizing && _rz.resizing.axis === "row" ? "rgba(79,140,255,0.5)" : "transparent" },
             onMouseEnter: (e) => { e.currentTarget.style.background = "rgba(79,140,255,0.3)" },
             onMouseLeave: (e) => { if (!(_rz.resizing && _rz.resizing.axis === "row")) e.currentTarget.style.background = "transparent" },
@@ -1751,7 +1840,14 @@ window.__ModuleLoader__.load({
       // with no outer scroller and no manual live-follow: a second scrollport
       // would duplicate the factory's scrolling, causing jitter and clipping.
       return h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden', position: 'relative' } },
-        h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 8px 4px', flexShrink: 0 } },
+        // Window-title drag handle: the header line doubles as the "grab the
+        // window by its title" surface (data-split-bar) — press and drag here
+        // reorders the pane. Buttons inside keep their click behaviour; the
+        // cursor/userSelect/touchAction just read as a title bar.
+        h('div', {
+          'data-split-bar': 1,
+          style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 8px 4px', flexShrink: 0, cursor: 'grab', userSelect: 'none', touchAction: 'none' },
+        },
           // Top-left: a bordered floating window matching the top-right "-+"
           // control, with the session name as a GRAY chip on the right. Clicking
           // the gray session chip opens a vertical list at the split boundary.

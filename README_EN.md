@@ -20,7 +20,7 @@
 | 📐 Column layout | One-click toggle to a single row of N equal columns (grid / column switch) |
 | 🏗️ Horizontal / Vertical | Shelf-style layout: horizontal = balanced multi-column grid that wraps (not 5-in-a-row), vertical = single-column stack; click icon to toggle instantly |
 | 📏 Pane resize | Drag handles on the right/bottom edge of each pane to resize; auto-normalized and persisted |
-| 🖱️ Drag to reorder | Long-press a pane's empty area to lift it, then drag to a target to reorder (event target used directly for reliability) |
+| 🖱️ Drag to reorder | Drag a pane's title bar (or long-press its empty area) to lift it, drop on a target pane to reorder — highlighted on drop |
 | ➕ Targeted add | The "＋" on a pane inserts the new window right after that pane |
 | ⚙️ Per-pane controls | Top-right: status dot, remove (−), add (+) |
 | 🏷️ Title bar | "Workspace / session" split: click the workspace name to jump to the current session, click the session name to switch sessions in that workspace |
@@ -58,7 +58,7 @@ Place the entire `session-booth/` directory into DSH's plugin directory, then re
 4. In each pane's top-right corner: **+** adds more sessions, **−** removes that session.
 5. Use the 🏗️ / 📐 buttons at the grid's top-right to toggle **Horizontal / Vertical / Grid** layout.
 6. Drag the translucent handles on each pane's right/bottom edge to resize it.
-7. Long-press a pane's empty area to lift it, then drag to reorder.
+7. Drag a pane's title bar (or long-press its empty area) to lift it, then drop it onto another pane to reorder.
 8. The split layout is restored automatically after a DSH restart.
 
 ## 🎨 Status dot colors
@@ -91,6 +91,11 @@ session-booth/
 ```
 
 ## 📝 Changelog
+
+### v0.3.7
+
+- 🖱️ **Drag-to-reorder rewritten**: drag the pane's title bar to lift it instantly (no long-press needed — like grabbing a window title); long-press (220ms) anywhere else on the pane still lifts as before. The drop target gets an accent border + translucent highlight, and a stray click right after dropping is swallowed.
+- 🔧 The drag engine moved to native capture-phase listeners on the grid container — DSH conversation components (Lexical editor etc.) that call `stopPropagation` on React events no longer swallow the gesture. Buttons, links, inputs and contenteditables no longer start a drag; text selection and typing are untouched, and title bars / resize strips are marked as priority gesture zones.
 
 ### v0.3.6
 
