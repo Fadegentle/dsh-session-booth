@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-booth",
   "type": "module",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "main": "./index.js",
   "description": "Session Booth: a persistent multi-session split view in the DSH main window.",
   "icon": "./icon.svg",

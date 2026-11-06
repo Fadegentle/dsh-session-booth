@@ -92,6 +92,13 @@ session-booth/
 
 ## 📝 Changelog
 
+### v0.3.6
+
+- 🔄 Long-press the layout toggle button (500ms) to restore default widths — all tracks reset to equal weight.
+- 🏷️ Toggle button tooltips for all three states now read "Grid / Horizontal / Vertical" + "/Long-press to reset", with parenthetical descriptions removed.
+- 📐 Fixed the toggle button's right-edge spacing to match the pane's "−+" float (both at 17px from the panel's right edge).
+- 🐛 Fixed n=5 (and similar imperfect-fill) grid still showing "3 top + 2 bottom" with empty space: the v0.3.5 LCM change upgraded from 3 tracks to 6 tracks, but the old 3-element width array in localStorage was incorrectly reused for 6 tracks. `clampSizes` now resets to equal-width when the stored array length doesn't match the track count.
+
 ### v0.3.5
 
 - 🔲 Fixed grid rows not filling the full width: the column count is now the LCM (least common multiple) of each row's pane count, so every row's panes tile the entire width with integer colSpan (5 sessions → 2 top spanning 50% each, 3 bottom spanning ~33% each — no more empty cells).

@@ -48,10 +48,10 @@ window.__ModuleLoader__.load({
       'split.switchSession': 'Switch to another session in this workspace',
       'split.editTitle': 'Edit session booth',
       'split.confirm': 'Confirm',
-      'split.layoutGrid': 'Grid layout',
+      'split.layoutGrid': 'Grid / Long-press to reset',
       'split.layoutColumns': 'Column layout',
-      'split.layoutRows': 'Horizontal (balanced grid, wraps to next row)',
-      'split.layoutCols': 'Vertical (stacked rows, single column)',
+      'split.layoutRows': 'Horizontal / Long-press to reset',
+      'split.layoutCols': 'Vertical / Long-press to reset',
       'split.addToBooth': 'Add to Session Booth',
       'split.addToBoothAria': 'Add this session to the Session Booth',
       'split.addedToBooth': 'Added to Session Booth',
@@ -97,10 +97,10 @@ window.__ModuleLoader__.load({
       'split.switchSession': '切换到该工作区的其他会话',
       'split.editTitle': '编辑会话廊',
       'split.confirm': '确认',
-      'split.layoutGrid': '网格布局',
+      'split.layoutGrid': '网格/长按重置',
       'split.layoutColumns': '分栏布局',
-      'split.layoutRows': '横排（横向多栏，自动换行填充）',
-      'split.layoutCols': '列排（单列竖直，上下堆叠）',
+      'split.layoutRows': '横排/长按重置',
+      'split.layoutCols': '纵排/长按重置',
       'split.addToBooth': '加入会话廊',
       'split.addToBoothAria': '将该会话加入会话廊',
       'split.addedToBooth': '已加入会话廊',
@@ -175,7 +175,7 @@ window.__ModuleLoader__.load({
     }
 
     // Shelf layout orientation: 'rows' (横排, bookshelf — horizontal shelves
-    // that stack vertically) or 'cols' (列排 — vertical columns that fill a
+    // that stack vertically) or 'cols' (纵排 — vertical columns that fill a
     // horizontal band). Persisted so the preferred arrangement survives a
     // reload. DEFAULT IS null = no shelf layout chosen, so the booth opens on
     // the even staircase grid; the shelf layout only kicks in after the user
@@ -379,7 +379,7 @@ window.__ModuleLoader__.load({
 
     // Bookshelf glyph: two horizontal shelves (used to switch to the 横排
     // / shelf layout). Reads as "rows stacked vertically".
-    // 列排 toggle icon: two vertical lines.
+    // 纵排 toggle icon: two vertical lines.
     function ShelfIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
@@ -633,7 +633,7 @@ window.__ModuleLoader__.load({
      * an explicit SessionProvider so it binds to its own session.
      */
 
-    // ---- Shelf layout (横排 / 列排) constants ----
+    // ---- Shelf layout (横排 / 纵排) constants ----
     // The grid's own padding and gap (must match the grid container style).
     const SHELF_PAD = 8
     const SHELF_GAP = 8
@@ -696,7 +696,7 @@ window.__ModuleLoader__.load({
       return computeGrid(n)
     }
 
-    // ---- Shelf layout (横排 / 列排) ----
+    // ---- Shelf layout (横排 / 纵排) ----
     // The shelf model keeps ONE flat list of session ids (layout.ids) and an
     // orientation. Panes flow left-to-right along a shelf and wrap to the next
     // shelf (rows) or top-to-bottom along a column and wrap to the next column
@@ -707,7 +707,7 @@ window.__ModuleLoader__.load({
 
     // Grid track counts for the current orientation.
     // 横排 ('cols'): columns = ceil(sqrt(n)), rows = ceil(n/cols).
-    // 列排 ('rows'): one pane per row, rows stack vertically.
+    // 纵排 ('rows'): one pane per row, rows stack vertically.
     function shelfGrid(n, orientation) {
       if (n <= 0 || !isShelfOrientation(orientation)) return null
       if (orientation === 'cols') {
@@ -727,6 +727,9 @@ window.__ModuleLoader__.load({
 
       const [picker, setPicker] = useState(null) // {mode:'initial'|'add', exclude:Set}
       const [paneRefs, setPaneRefs] = useState({}) // id -> {ref}
+      // Long-press the layout toggle button to reset all track widths/heights
+      // to the default (equal) distribution. Clears stored sizes too.
+      const toggleLongPress = useLongPress(() => { layout.resetSizes() }, 500)
       // Lazy-mount: panes are heavy (each mounts a full ConversationContent
       // with a Lexical composer editor). Mounting N at once blocks the first
       // paint. We mount the FIRST pane immediately, then advance one pane per
@@ -765,7 +768,7 @@ window.__ModuleLoader__.load({
       // layout index; dragOver = the index it would land on; dragging gates
       // pointer capture so a stray release can't drop it in the wrong place.
       const [dragIndex, setDragIndex] = useState(null)
-      // Measured pane-per-shelf count for the shelf layout (横排 / 列排).
+      // Measured pane-per-shelf count for the shelf layout (横排 / 纵排).
       // Declared early so the layout derivation below can read it.
 
       const [dragOver, setDragOver] = useState(null)
@@ -1136,7 +1139,7 @@ window.__ModuleLoader__.load({
       }, [layout.ids, wsBySession, wsDisplay])
 
       // Layout resolution. When a shelf orientation is active and we've
-      // measured the box, use the shelf grid (横排 shelves / 列排 columns);
+      // measured the box, use the shelf grid (横排 shelves / 纵排 columns);
       // otherwise fall back to the staircase / column-split model.
       // Shelf layout is opt-in: only a user-picked 行/列 orientation engages
       // it. With no orientation chosen (the default) `shelf` is null and the
@@ -1241,7 +1244,10 @@ window.__ModuleLoader__.load({
         ? (layout.orientation === "rows" ? i : Math.floor(i / cols))
         : ((placements[i] || {row: 0}).row)
       const clampSizes = (arr, n, fb) => {
-        if (!Array.isArray(arr)) return Array(n).fill(fb)
+        // If stored sizes don't match the current track count (e.g. upgrading
+        // from a 3-track grid to a 6-track one after the LCM change), reset to
+        // equal-width tracks so every row fills the full width with no gaps.
+        if (!Array.isArray(arr) || arr.length !== n) return Array(n).fill(1 / n)
         const out = Array(n)
         for (let i = 0; i < n; i++) {
           const v = arr[i]
@@ -1303,7 +1309,7 @@ window.__ModuleLoader__.load({
         document.addEventListener('pointermove', onMove)
         document.addEventListener('pointerup', onUp)
       }
-      // NOTE: the shelf layout (横排/列排) is now a strict one-per-row /
+      // NOTE: the shelf layout (横排/纵排) is now a strict one-per-row /
       // one-per-column arrangement derived directly from the pane count, so
       // there is no per-shelf measurement to run. The grid box still exposes
       // gridRef for the drag handlers and the resize affordance.
@@ -1380,7 +1386,7 @@ window.__ModuleLoader__.load({
         },
       },
         // Shelf-orientation toggle: single icon button that cycles
-        // grid → 横排 → 列排 → 横排 → ... and swaps its icon to match.
+        // grid → 横排 → 纵排 → grid → ... and swaps its icon to match.
         // Always visible when there is more than one pane, so it serves as
         // the entry point FROM grid mode INTO shelf mode. Sits at the far
         // top-right, BELOW the per-pane "-+" float: the grid container has
@@ -1391,7 +1397,7 @@ window.__ModuleLoader__.load({
           ? h('div', {
             className: 'dshSplitFloat',
             style: {
-              position: 'absolute', top: 55, right: 8, zIndex: 20,
+              position: 'absolute', top: 55, right: 17, zIndex: 20,
               display: 'flex', alignItems: 'center', gap: 2,
               background: 'var(--dsh-bg, #1e1e1e)', border: '1px solid var(--dsh-border, #333)',
               borderRadius: 8, padding: '2px 4px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
@@ -1406,8 +1412,13 @@ window.__ModuleLoader__.load({
               'aria-label': !layout.orientation ? t('split.layoutGrid')
                 : layout.orientation === 'cols' ? t('split.layoutRows')
                 : t('split.layoutCols'),
-              onClick: () => {
-                // 三态循环: grid → 横排 → 列排 → grid
+              onPointerDown: (e) => { if (e.button === 0) toggleLongPress.start() },
+              onPointerUp: () => toggleLongPress.cancel(),
+              onPointerLeave: () => toggleLongPress.cancel(),
+              onClick: (e) => {
+                e.stopPropagation(); e.preventDefault()
+                if (toggleLongPress.didFire()) return
+                // 三态循环: grid → 横排 → 纵排 → grid
                 const next = !layout.orientation ? 'cols'
                   : layout.orientation === 'cols' ? 'rows'
                   : null
@@ -1428,7 +1439,7 @@ window.__ModuleLoader__.load({
             gridTemplateColumns: trackMin != null ? `repeat(${cols}, minmax(${trackMin}px, 1fr))` : colSizes.map(f => f + 'fr').join(' '),
             gridTemplateRows: trackMin != null ? `repeat(${rows}, minmax(${trackMin}px, 1fr))` : rowSizes.map(f => f + 'fr').join(' '),
             // Shelf wrap: 横排 ('cols') fills left-to-right (row), wrapping
-            // down to the next row; 列排 ('rows') fills top-to-bottom
+            // down to the next row; 纵排 ('rows') fills top-to-bottom
             // (column), wrapping right to the next column.
             gridAutoFlow: shelf ? (layout.orientation === 'cols' ? 'row' : 'column') : undefined,
             height: '100%', width: '100%', gap: 8, padding: 8, background: 'var(--dsh-bg, #1e1e1e)',
@@ -1947,7 +1958,7 @@ window.__ModuleLoader__.load({
         const layout = {
           ids: [],
           // 'rows' (横排, bookshelf: horizontal shelves that stack vertically)
-          // or 'cols' (列排: vertical columns that fill horizontally). null =
+          // or 'cols' (纵排: vertical columns that fill horizontally). null =
           // no shelf layout chosen => the even staircase grid is used.
           orientation: null,
           // {cols:[],rows:[]} — per-track flex weights. null = even 1fr.
@@ -2001,7 +2012,7 @@ window.__ModuleLoader__.load({
           },
           // Shelf layout orientation: 'cols' = 横排 (horizontal balanced
           // grid that wraps to the next row, like a wide bookshelf); 'rows'
-          // = 列排 (vertical single-column stack, one pane per row).
+          // = 纵排 (vertical single-column stack, one pane per row).
           // 横排 ('cols') computes a balanced grid (ceil(sqrt(n)) columns)
           // so 5 panes give a 3×2 wrap, NOT 5-in-a-row.
           setOrientation: (o) => {
@@ -2014,6 +2025,11 @@ window.__ModuleLoader__.load({
           setSizes: (sizes) => {
             layout.sizes = sizes
             writeStoredSizes(sizes)
+            layout.emit()
+          },
+          resetSizes: () => {
+            layout.sizes = null
+            try { window.localStorage.removeItem(SIZES_KEY) } catch {}
             layout.emit()
           },
           subscribe(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn) },
