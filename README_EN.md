@@ -46,7 +46,19 @@ plugin_manager install_bundle C:\\...\\session-booth
 > plugin_manager install_bundle <plugin-dir> --registry https://registry.npmjs.org
 > ```
 
-### Method 2: Manual placement
+### Method 2: Install from GitHub (remote, easiest for others)
+
+No need to download the directory — install straight from the GitHub source (replace `<profile>` with your actual profile name; `dsh web` is usually `web`):
+
+```sh
+dsh plugin --profile <profile> add github:Fadegentle/dsh-session-booth
+```
+
+Restart DSH afterwards.
+
+> Installing from the GitHub source makes pnpm ask before running build scripts. If a prebuilt `tgz` is attached to the release, you can install that instead to skip the prompt.
+
+### Method 3: Manual placement
 
 Place the entire `session-booth/` directory into DSH's plugin directory, then restart DSH.
 
