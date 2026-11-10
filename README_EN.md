@@ -37,7 +37,7 @@
 Install the bundle via DSH's plugin manager:
 
 ```
-plugin_manager install_bundle C:\...\session-booth
+plugin_manager install_bundle C:\\...\\session-booth
 ```
 
 > If the default mirror (`registry.npmmirror.com`) returns `ERR_PNPM_NO_MATCHING_VERSION`, use the official registry instead:
@@ -89,75 +89,6 @@ session-booth/
     ├── zh.json          # Chinese localization
     └── en.json          # English localization
 ```
-
-## 📝 Changelog
-
-### v0.3.7
-
-- 🖱️ **Drag-to-reorder rewritten**: drag the pane's title bar to lift it instantly (no long-press needed — like grabbing a window title); long-press (220ms) anywhere else on the pane still lifts as before. The drop target gets a translucent highlight, and a stray click right after dropping is swallowed.
-- 🔧 The drag engine moved to native capture-phase listeners on the grid container — DSH conversation components (Lexical editor etc.) that call `stopPropagation` on React events no longer swallow the gesture. Buttons, links, inputs and contenteditables no longer start a drag; text selection and typing are untouched, and title bars / resize strips are marked as priority gesture zones.
-
-### v0.3.6
-
-- 🔄 Long-press the layout toggle button (500ms) to restore default widths — all tracks reset to equal weight.
-- 🏷️ Toggle button tooltips for all three states now read "Grid / Horizontal / Vertical" + "/Long-press to reset", with parenthetical descriptions removed.
-- 📐 Fixed the toggle button's right-edge spacing to match the pane's "−+" float (both at 17px from the panel's right edge).
-- 🐛 Fixed n=5 (and similar imperfect-fill) grid still showing "3 top + 2 bottom" with empty space: the v0.3.5 LCM change upgraded from 3 tracks to 6 tracks, but the old 3-element width array in localStorage was incorrectly reused for 6 tracks. `clampSizes` now resets to equal-width when the stored array length doesn't match the track count.
-
-### v0.3.5
-
-- 🔲 Fixed grid rows not filling the full width: the column count is now the LCM (least common multiple) of each row's pane count, so every row's panes tile the entire width with integer colSpan (5 sessions → 2 top spanning 50% each, 3 bottom spanning ~33% each — no more empty cells).
-
-### v0.3.4
-
-- 🗑️ Removed the guide UI (icon + title + "Add sessions" button) shown when no sessions are in the booth; the session picker now opens directly.
-- 📌 The header "+" button toggles to "−" after adding a session; clicking it again removes the session. The toast is now an inline bubble next to the button instead of a fixed overlay at the screen corner.
-- 🖱️ All buttons now have an `:active` pressed-state feedback (scale + darken), visually distinct from hover.
-
-### v0.3.3
-
-- 🐛 Fixed: the Session Booth could not be reopened after dismissing the picker or clearing all sessions (new `dismissed` flag is reset on open; the panel only returns to the editor when the user explicitly dismisses/clears).
-- 📌 Clicking "Add to Session Booth" in a regular session window no longer jumps to the booth; instead a "Added to Session Booth" toast appears at the bottom-right.
-
-### v0.3.2
-
-- 🔲 Grid layout now **recalculates on every add/remove**: rows = largest square ≤ n (9→3 rows, 8→2, 6→2), evenly distributed per row, odd counts top-small bottom-large (7→3+4).
-- 🐛 Fixed: adding sessions while selecting same-workspace sessions made them invisible (picker no longer disables already-displayed sessions — all sessions are selectable, and already-displayed ones can be toggled off).
-- 🧹 Fixed "Clear all" not working: `onClearBooth` was not passed through `renderPane`; now wired correctly.
-- 🖱️ Long-press "−" now shows a **full-booth overlay confirm** (not a single-pane popup); "−" tooltip reads "Remove this session / Long-press to clear all".
-- ✏️ Session picker now has **Select all / Clear** buttons.
-
-### v0.3.1
-
-- 🔄 Fixed layout switching: the icon now cycles **Grid → Horizontal → Vertical → Grid** (three states; previously it looped only Horizontal↔Vertical and never returned to Grid). For perfectly-filled pane counts (4, 6, 9…) Horizontal takes one extra column so it no longer renders identically to Grid — which was the "only Grid and Vertical, no Horizontal" bug.
-
-### v0.3.0
-
-- 🏗️ Added **Horizontal / Vertical** shelf layout (horizontal = balanced multi-column grid that wraps, vertical = single-column stack), toggled instantly from the grid toolbar and persisted.
-- 📏 Added **pane resizing**: drag the translucent handles on each pane's right/bottom edge; weights are auto-normalized and stored in `localStorage`.
-- 🖱️ Drag-to-reorder now reads the pane index from the event's `currentTarget` instead of a `elementFromPoint` hit-test, making it much more reliable.
-- 🟢 Status dot rule refined: a **running retry after a failed last turn now pulses green** instead of red; red only shows when the session is settled and the latest turn failed.
-- 🟡 The pending (yellow) dot shows whenever a session is not running and has no settled turn (including prompted-but-first-turn-not-settled).
-
-### v0.2.0
-
-- ➕ Added **column layout** mode (single row of N columns), one-click toggle and persisted.
-- 🖱️ Added **drag to reorder** (long-press the empty area to lift, drag to a target to swap).
-- 🎯 Added **targeted add**: the "＋" on a pane inserts the new window right after that pane.
-- 🟥 The status dot now detects "processing failed / this round failed" (`interrupted` / `aborted` sign-out), no longer missed.
-- 🔽 The session-switch dropdown now **collapses on outside click**.
-- 🔲 The staircase grid supports **odd counts** with no empty cell (5 → 2 top + 3 bottom).
-- 🚀 Panes **lazy-mount** on staggered frames to avoid jank with many sessions.
-- ⏳ A **unified loading overlay** on first entry, fades out when rendering completes.
-- 🏷️ Title bar reworked as a "Workspace / session" floating window with hover effects.
-- 📌 The composer is pinned to the very bottom of each pane (including the blank-session case).
-
-### v0.1.0
-
-- Initial release.
-- Supports 1 / 2 / 4 split grid layout.
-- Supports layout persistence (`localStorage`).
-- Supports session picker, status dots, and live scroll-follow.
 
 ## 📛 Naming
 

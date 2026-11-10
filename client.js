@@ -278,10 +278,13 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------- icons
 
-    function GridIcon({ size = 18 }) {
+    // Sidebar + booth-toggle glyph. Sized/stroked to match the DSH native
+    // sidebar row icons (16px, ~1.5 stroke) so it doesn't read heavier than
+    // its neighbours (插件 / 自动化任务 / …).
+    function GridIcon({ size = 16 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.25, strokeLinecap: 'round',
         strokeLinejoin: 'round', 'aria-hidden': 'true',
       },
         h('rect', { x: 2, y: 3, width: 12, height: 10, rx: 1.5 }),
@@ -2166,7 +2169,7 @@ window.__ModuleLoader__.load({
             // Thunk so the label re-reads on locale switch.
             label: () => t('split.panelLabel'),
           }, function SidebarIcon(props) {
-            return h(GridIcon, { size: props.size ?? 18 })
+            return h(GridIcon, { size: props.size ?? 16 })
           })
         })
 
