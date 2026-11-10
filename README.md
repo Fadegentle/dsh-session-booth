@@ -62,7 +62,11 @@ dsh plugin --profile web add github:Fadegentle/dsh-session-booth
 
 > `<profile>` 是 DSH 的 profile 名（`desktop` / `web`），不是用户名。若用了别的 profile，把命令里的 `desktop`/`web` 换成实际名字即可。
 >
-> 从 GitHub 源安装时 pnpm 会在运行构建脚本前询问确认；若发行页附了打包好的 `tgz`，也可以直接装那个包，免去确认步骤。
+> 从 GitHub 源安装时 pnpm 会在运行构建脚本前询问确认；若想跳过确认，直接装发行页打包好的 `tgz`：
+>
+> ```sh
+> dsh plugin --profile desktop add https://github.com/Fadegentle/dsh-session-booth/releases/download/v0.3.7/dsh-session-booth-0.3.7.tgz
+> ```
 
 ### 方式三：手动放置
 

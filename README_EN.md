@@ -62,7 +62,11 @@ Restart DSH afterwards.
 
 > `<profile>` is the DSH profile name (`desktop` / `web`), not a username. If you use a different profile, swap `desktop`/`web` for its actual name.
 >
-> Installing from the GitHub source makes pnpm ask before running build scripts. If a prebuilt `tgz` is attached to the release, you can install that instead to skip the prompt.
+> Installing from the GitHub source makes pnpm ask before running build scripts. To skip the prompt, install the prebuilt `tgz` from the release page directly:
+>
+> ```sh
+> dsh plugin --profile desktop add https://github.com/Fadegentle/dsh-session-booth/releases/download/v0.3.7/dsh-session-booth-0.3.7.tgz
+> ```
 
 ### Method 3: Manual placement
 
