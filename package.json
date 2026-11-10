@@ -18,11 +18,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FdcWinPC/dsh-session-booth.git"
+    "url": "git+https://github.com/Fadegentle/dsh-session-booth.git"
   },
-  "homepage": "https://github.com/FdcWinPC/dsh-session-booth#readme",
+  "homepage": "https://github.com/Fadegentle/dsh-session-booth#readme",
   "bugs": {
-    "url": "https://github.com/FdcWinPC/dsh-session-booth/issues"
+    "url": "https://github.com/Fadegentle/dsh-session-booth/issues"
   },
   "exports": {
     ".": "./index.js",
