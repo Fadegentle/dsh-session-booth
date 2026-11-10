@@ -48,14 +48,20 @@ plugin_manager install_bundle C:\\...\\session-booth
 
 ### Method 2: Install from GitHub (remote, easiest for others)
 
-No need to download the directory — install straight from the GitHub source (replace `<profile>` with your actual profile name; `dsh web` is usually `web`):
+No need to download the directory — install straight from the GitHub source. Pick one based on the DSH flavour in use:
 
 ```sh
-dsh plugin --profile <profile> add github:Fadegentle/dsh-session-booth
+# DSH Desktop app
+dsh plugin --profile desktop add github:Fadegentle/dsh-session-booth
+
+# command-line dsh web
+dsh plugin --profile web add github:Fadegentle/dsh-session-booth
 ```
 
 Restart DSH afterwards.
 
+> `<profile>` is the DSH profile name (`desktop` / `web`), not a username. If you use a different profile, swap `desktop`/`web` for its actual name.
+>
 > Installing from the GitHub source makes pnpm ask before running build scripts. If a prebuilt `tgz` is attached to the release, you can install that instead to skip the prompt.
 
 ### Method 3: Manual placement
