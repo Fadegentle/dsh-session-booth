@@ -94,7 +94,7 @@ session-booth/
 
 ### v0.3.7
 
-- 🖱️ **Drag-to-reorder rewritten**: drag the pane's title bar to lift it instantly (no long-press needed — like grabbing a window title); long-press (220ms) anywhere else on the pane still lifts as before. The drop target gets an accent border + translucent highlight, and a stray click right after dropping is swallowed.
+- 🖱️ **Drag-to-reorder rewritten**: drag the pane's title bar to lift it instantly (no long-press needed — like grabbing a window title); long-press (220ms) anywhere else on the pane still lifts as before. The drop target gets a translucent highlight, and a stray click right after dropping is swallowed.
 - 🔧 The drag engine moved to native capture-phase listeners on the grid container — DSH conversation components (Lexical editor etc.) that call `stopPropagation` on React events no longer swallow the gesture. Buttons, links, inputs and contenteditables no longer start a drag; text selection and typing are untouched, and title bars / resize strips are marked as priority gesture zones.
 
 ### v0.3.6

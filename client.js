@@ -1733,8 +1733,7 @@ window.__ModuleLoader__.load({
         // consumer components can't swallow a container-level gesture.
         style: { position: 'relative', overflow: 'hidden', background: 'var(--dsh-bg, #1e1e1e)', minWidth: 0, gridColumn: placement ? `span ${placement.colSpan}` : undefined, gridRow: placement ? placement.row + 1 : undefined,
           borderRadius: 10, border: '1px solid var(--dsh-border, #333)',
-          borderColor: dragIndex !== null && dragOver === index && dragIndex !== index ? 'var(--dsh-accent, #4f8cff)' : undefined,
-          transition: 'box-shadow 120ms ease, transform 120ms ease, opacity 200ms ease, border-color 120ms ease',
+          transition: 'box-shadow 120ms ease, transform 120ms ease, opacity 200ms ease',
           boxShadow: dragIndex !== null && dragIndex === index ? '0 12px 32px rgba(0,0,0,0.6)' : '0 2px 8px rgba(0,0,0,0.2)',
           transform: dragIndex !== null && dragIndex === index ? 'scale(1.03)' : undefined,
           zIndex: dragIndex !== null && dragIndex === index ? 30 : undefined,
