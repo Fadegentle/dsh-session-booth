@@ -66,3 +66,57 @@ function boothDebug(msg) {
 1. `Ctrl+Shift+I` 打开 DevTools（会以独立窗口弹出）。
 2. 切到 **Console** 标签。
 3. 点 console 输入行，输入 `location.reload()` 回车。
+
+## 发布与上架
+
+### 发新版（本仓库已自动化）
+
+`.github/workflows/release.yml` 在 push `v*` tag 时自动跑：语法检查 → 校验 manifest → `npm pack` → 建 GitHub Release 并挂 tgz。所以发新版只需：
+
+```sh
+# 1. 改 package.json 的 version（如 0.3.8 → 0.3.9）
+# 2. 提交并推送 main
+git commit -am "chore: bump version to 0.3.9" && git push
+# 3. 打 tag 触发 release
+git tag -a v0.3.9 -m "v0.3.9" && git push origin v0.3.9
+```
+
+> 踩坑：`npm pack --pack-destination ./dist` **不会自动创建 `dist/`**，CI 上报 `ENOENT`。workflow 里已在 pack 前加了 `mkdir -p ./dist`，别删。
+
+代理不稳时 push 偶发 `SSL_ERROR_SYSCALL`/`Connection was reset`，重试即可。注意 `git push 2>&1 | tail -1 && break` 这种写法里 `tail` 会吃掉 git 的退出码导致重试循环失效，要用 `${PIPESTATUS[0]}` 判断。
+
+### 收录进插件市场（dsh-market）
+
+市场本身（`dsh-market/dsh-market`）**不是收录入口**，别往它提 PR。列表数据在 **`awesome-dsh-plugin/awesome-dsh-plugin`** 的 `data/plugins/`，一个插件一个 YAML 文件。流程：
+
+1. Fork `awesome-dsh-plugin`，开分支。
+2. 新增 `data/plugins/<owner>__<repo>.yml`（只有 `description.en` 必填，`zh` 可留空让维护者补）：
+
+   ```yaml
+   url: https://github.com/owner/repo
+   name: owner/repo
+   category: session            # 见仓库 contributing.md 的分类表
+   description:
+     en: One-line description ending with a period.
+     zh: 一句话描述，以句号结尾。
+   icon: https://raw.githubusercontent.com/owner/repo/main/assets/icon-180.png
+   tarball: https://github.com/owner/repo/releases/latest/download/<repo>.tgz   # 可选，装 release 包免确认
+   ```
+
+3. 跑 `npm ci && node scripts/generate-readme.mjs` 重新生成两个 README，**和条目文件一起提交**。
+4. 提 PR，CI 绿后等维护者合并。
+
+**三个硬性校验（踩过的坑）：**
+
+- **icon 必须是位图**（png/jpg/webp），`.svg` 会被生成器拒。从 `icon.svg` 用 headless Chrome 导出 180×180 PNG 放 `assets/icon-180.png`：
+  ```sh
+  chrome --headless --disable-gpu --window-size=180,180 \
+    --screenshot="$(pwd -W)/assets/icon-180.png" "file:///$(pwd -W)/tmp_icon.html"
+  ```
+  `tmp_icon.html` 是个 180×180 圆角深色底 + 居中 svg 的壳子，用完即删。
+- **README 必须与 `data/plugins/` 同步**。分支基于旧 main 时 README 会过期，CI 的 `READMEs match data/plugins` 会挂——重新基于最新 main 生成再推。
+- **仓库创建满 1 天**才能过 CI（自动检查，过滤 PR 前几分钟才建的仓库）。新建仓库当天提 PR 会红，等满 24h 再提即可。
+
+### 上架后多久能搜到
+
+PR 合并后，`awesome-dsh-plugin` 的两个 README 和 index 在 `main` 上自动重新生成；dsh-market 站点与市场索引随后抓取，**通常一天内**能在市场里搜到。合并后若想更快，确认 release 的 `latest/download/<repo>.tgz` 链接有效（市场可能用 tarball 加速安装）。
