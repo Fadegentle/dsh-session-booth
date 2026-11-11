@@ -248,12 +248,13 @@ window.__ModuleLoader__.load({
           // SCOPED to .dshSplitPaneConv — these must NOT leak to the main
           // window. `[data-conversation-scroll]` / `[data-composer-seat]` are
           // shared DSH attributes also present in the main chat view, so an
-          // unscoped `position:sticky; bottom:0` here pins the MAIN composer
-          // to the bottom even on 轨迹/统计 tabs (reported bug), and the
-          // viewArea flex rule would inflate the main window's own viewArea.
-          // Scoping to our pane wrapper keeps the pin local to booth panes.
-          '.dshSplitPaneConv [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
-          '.dshSplitPaneConv [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
+          // unscoped rule pins the MAIN composer even on 轨迹/统计 tabs
+          // (reported bug) and inflates the main window's own viewArea.
+          // Sticky must still resolve against the REAL scrollport
+          // `[data-conversation-scroll]` (the pane's scroll container), so keep
+          // it in the selector and only prefix the pane wrapper for scope:
+          '.dshSplitPaneConv [data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
+          '.dshSplitPaneConv [data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
           // Per-button hover: each button inside the floating windows greys
           // out independently on hover (black -> gray). No box-level hover.
           '.dshSplitFloat button { transition: background 120ms ease, color 120ms ease }\n' +
