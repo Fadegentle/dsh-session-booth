@@ -245,8 +245,15 @@ window.__ModuleLoader__.load({
           // margin-top:auto on the composerSeat is the classic flex trick: it
           // consumes any leftover vertical space and pins the composer to the
           // pane bottom for both blank and populated sessions.
-          '[data-conversation-scroll] [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
-          '[data-conversation-scroll] [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
+          // SCOPED to .dshSplitPaneConv — these must NOT leak to the main
+          // window. `[data-conversation-scroll]` / `[data-composer-seat]` are
+          // shared DSH attributes also present in the main chat view, so an
+          // unscoped `position:sticky; bottom:0` here pins the MAIN composer
+          // to the bottom even on 轨迹/统计 tabs (reported bug), and the
+          // viewArea flex rule would inflate the main window's own viewArea.
+          // Scoping to our pane wrapper keeps the pin local to booth panes.
+          '.dshSplitPaneConv [data-composer-seat] { position: sticky; bottom: 0; margin-top: auto }\n' +
+          '.dshSplitPaneConv [class*="viewArea"] { flex: 1 0 auto !important; min-height: auto !important }\n' +
           // Per-button hover: each button inside the floating windows greys
           // out independently on hover (black -> gray). No box-level hover.
           '.dshSplitFloat button { transition: background 120ms ease, color 120ms ease }\n' +
@@ -2209,7 +2216,7 @@ window.__ModuleLoader__.load({
         // height, which clips the composer and breaks scrolling. No outer
         // scroller here: the factory owns its own [data-conversation-scroll]
         // scrollport and native bottom-follow.
-        h('div', { ref: composerWrapRef, style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', position: 'relative', height: '100%' } },
+        h('div', { ref: composerWrapRef, className: 'dshSplitPaneConv', style: { display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden', position: 'relative', height: '100%' } },
           renderFactorySlot('conversation.content', { variant: 'split', phase: 'active', hero: false }, {
             slots: {},
           }),

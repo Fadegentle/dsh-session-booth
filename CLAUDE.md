@@ -5,7 +5,7 @@
 
 ## 项目结构
 
-- `client.js` — 客户端装饰主逻辑（booth 分屏、卡片点击跳转、sidebar 调度）。DSH 加载的是**安装副本** `~/.dsh/profiles/desktop/node_modules/dsh-session-booth/client.js`，不是 git 工作区副本。**每次改完必须 cp 同步并用 md5 校验一致**，否则测的是旧代码。
+- `client.js` — 客户端装饰主逻辑（booth 分屏、卡片点击跳转、sidebar 调度）。DSH 加载的是**安装副本** `~/.dsh/profiles/desktop/node_modules/@local/session-booth/client.js`。本机这份是**软链回 git 工作区**的，所以改完即时生效、md5 恒一致（`cp` 会报 "same file"，正常）；若哪天变成实体副本，就必须 `cp` 同步并用 md5 校验一致，否则测的是旧代码。
 - `index.js` — 插件入口/注册。
 - `cordis.patch.yml` — DSH MCP/模型加载补丁（只在 DSH 启动时读一次；YAML 语法错误会导致 DSH 启动崩溃，编辑前备份、改完校验）。
 
