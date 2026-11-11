@@ -296,7 +296,7 @@ window.__ModuleLoader__.load({
     function PlusIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
         h('line', { x1: 8, y1: 3, x2: 8, y2: 13 }),
@@ -307,7 +307,7 @@ window.__ModuleLoader__.load({
     function MinusIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
         h('line', { x1: 3, y1: 8, x2: 13, y2: 8 }),
@@ -357,7 +357,7 @@ window.__ModuleLoader__.load({
     function CloseIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
         h('line', { x1: 4, y1: 4, x2: 12, y2: 12 }),
@@ -386,7 +386,7 @@ window.__ModuleLoader__.load({
     function ShelfIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
         h('line', { x1: 5, y1: 2, x2: 5, y2: 14 }),
@@ -398,7 +398,7 @@ window.__ModuleLoader__.load({
     function ColumnsIcon({ size = 12 }) {
       return h('svg', {
         width: size, height: size, viewBox: '0 0 16 16', fill: 'none',
-        stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round',
+        stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round',
         'aria-hidden': 'true',
       },
         h('line', { x1: 2, y1: 5, x2: 14, y2: 5 }),
@@ -708,6 +708,125 @@ window.__ModuleLoader__.load({
     // so a wider/shorter booth simply fits more panes per shelf.
     function isShelfOrientation(o) { return o === 'rows' || o === 'cols' }
 
+    // Session-scoped file address, mirroring dsh-client-ui-chat sessionFileAddress:
+    // dsh-resource://file/session/<sessionId>/<workspace-relative path>.
+    function sessionFileAddress(sessionId, rel) {
+      const norm = String(rel == null ? '' : rel).replace(/\\/g, '/').replace(/^(?:\.\/)+/, '')
+      return 'dsh-resource://file/session/' + encodeURIComponent(String(sessionId)) + '/' + encodePath(norm)
+    }
+    // Encode a resource-address path, preserving '/' separators.
+    function encodePath(p) {
+      return String(p).split('/').map(encodeURIComponent).join('/')
+    }
+
+    // ---- Open-in-sidebar, surviving the booth unmount ----
+    // Presenting a file from a booth pane must (1) jump the frame to that
+    // session's main window via openSession, which ADOPTS the session into the
+    // right-sidebar store, and (2) only then open the file there. Two things
+    // make the naive "openSession then openResource after two rAFs" fail:
+    //   • The adoption is async — `sidebarRight.mounted` still isn't the target
+    //     session two frames later, so openResource throws "no session surface
+    //     is mounted".
+    //   • Navigating away UNMOUNTS the booth grid, so any timer/rAF scheduled
+    //     inside the pane is torn down before it fires and the open never lands.
+    // So the retry lives at MODULE scope, outside the booth's React tree, and
+    // polls `sidebarRight.mounted` until it equals the session (or a deadline
+    // passes). This mirrors dsh-better-sidebar's own context-diagnostics retry,
+    // which tolerates exactly that "no session surface is mounted" throw.
+    let sidebarRightRef = null // captured on first SplitPanel render
+    const sidebarQueue = new Map() // sessionId -> { address, deadline }
+    const SIDEBAR_OPEN_TIMEOUT = 10000
+    const SIDEBAR_RETRY_MS = 50
+    let sidebarTimer = null
+    function mountIs(sessionId) {
+      // Cheap pre-gate only. `require()` throws unless BOTH `mounted === sessionId`
+      // AND `actionsFor(sessionId)` is non-undefined (the store is adopted), and
+      // adoption can lag the mount — so the authoritative gate is the throw itself,
+      // which drainSidebarQueue retries until the deadline.
+      const m = sidebarRightRef && sidebarRightRef.mounted
+      if (!m || typeof m.getSnapshot !== 'function') return true // no mounted feed: just try
+      return m.getSnapshot() === sessionId
+    }
+    function isExpanded() {
+      try { return sidebarRightRef && sidebarRightRef.isExpanded ? !!sidebarRightRef.isExpanded() : true } catch (e) { return true }
+    }
+    function expandSidebar() {
+      // Returns true when the column is (now) expanded. `toggleExpanded` runs
+      // `require()` internally, which throws while no session surface is
+      // mounted/adopted — propagate that as `false` so callers can retry.
+      try {
+        if (sidebarRightRef && !isExpanded() && typeof sidebarRightRef.toggleExpanded === 'function') sidebarRightRef.toggleExpanded()
+        return true
+      } catch (e) { return false }
+    }
+    function drainSidebarQueue() {
+      if (!sidebarQueue.size) {
+        if (sidebarTimer) { clearInterval(sidebarTimer); sidebarTimer = null }
+        return
+      }
+      const now = Date.now()
+      for (const [sessionId, job] of Array.from(sidebarQueue.entries())) {
+        if (!sidebarRightRef || typeof sidebarRightRef.openResource !== 'function') { sidebarQueue.delete(sessionId); continue }
+        if (now > job.deadline) { sidebarQueue.delete(sessionId); continue } // gave up; user can click again on main
+        // Cheap skip while the session isn't even the on-screen one yet.
+        if (!mountIs(sessionId)) continue
+        // Expand-only job (changes card): reveal the sidebar, no resource to open.
+        // expandSidebar() runs toggleExpanded -> require(), which throws while the
+        // session isn't adopted yet; it returns false then, so keep polling.
+        if (!job.address) {
+          if (expandSidebar()) sidebarQueue.delete(sessionId)
+          continue
+        }
+        // File job: openResource throws "no session surface is mounted" until the
+        // session is BOTH mounted AND adopted (actionsFor non-undefined). Retry on
+        // throw until the deadline — mirrors better-sidebar's own diagnostics.
+        try {
+          sidebarRightRef.openResource(job.address, job.options || { revealIfOpened: true })
+          expandSidebar()
+          sidebarQueue.delete(sessionId)
+        } catch (e) { /* not mounted/adopted yet — keep polling */ }
+      }
+      if (!sidebarQueue.size && sidebarTimer) { clearInterval(sidebarTimer); sidebarTimer = null }
+    }
+    function queueSidebarOpen(sessionId, address, options) {
+      if (!sessionId) return
+      sidebarQueue.set(sessionId, { address: address || null, options: options || null, deadline: Date.now() + SIDEBAR_OPEN_TIMEOUT })
+      if (sidebarTimer === null) sidebarTimer = setInterval(drainSidebarQueue, SIDEBAR_RETRY_MS)
+    }
+    // Read the changed-files coordinates (seq/turn) straight off the card's React
+    // fiber instead of re-dispatching a click. The native card builds its address
+    // as changesReviewAddress({sessionId, seq: changes.seq, turn: changes.turn}),
+    // and `changes` lives ONLY in the component's props (never the DOM) — so the
+    // old patch-and-redispatch dance was the only way to learn seq/turn, but it
+    // silently no-ops whenever React doesn't synchronously re-run the card's
+    // onClick inside dispatchEvent (captured stays null -> nothing happens).
+    // Walking the fiber is deterministic: every rendered DOM node carries a
+    // `__reactFiber$*` key, and some ancestor's memoizedProps holds the `changes`
+    // object (plus a redundant sessionId, which the booth pane's own id wins over
+    // so the address always targets the pane's session).
+    function changesAddressFromFiber(el, sessionId) {
+      try {
+        const fiberKey = Object.keys(el).find((k) => k.startsWith('__reactFiber$'))
+        let fiber = fiberKey ? el[fiberKey] : null
+        for (let i = 0; i < 30 && fiber; i++) {
+          const props = fiber.memoizedProps
+          if (props && typeof props === 'object' && props.changes && typeof props.changes === 'object') {
+            const c = props.changes
+            if (c.seq !== undefined && c.turn !== undefined) {
+              const sid = props.sessionId !== undefined ? props.sessionId : (c.sessionId !== undefined ? c.sessionId : sessionId)
+              return {
+                address: 'dsh-resource://changes-review/session/' + encodeURIComponent(sid) + '/' + c.seq + '/' + c.turn,
+                options: { params: { index: 0 } }
+              }
+            }
+          }
+          fiber = fiber.return
+        }
+      } catch (err) { }
+      return null
+    }
+
+    let captureReentry = false // guard: the re-dispatched click re-enters onClickCapture
     // Grid track counts for the current orientation.
     // 横排 ('cols'): columns = ceil(sqrt(n)), rows = ceil(n/cols).
     // 纵排 ('rows'): one pane per row, rows stack vertically.
@@ -722,7 +841,30 @@ window.__ModuleLoader__.load({
     }
 
     function SplitPanel(props) {
-      const { sessions, workspaces, layout, t, wsDisplay, SessionProvider, renderPane, uiWorkspace } = props
+      const { sessions, workspaces, layout, t, wsDisplay, SessionProvider, renderPane, uiWorkspace, sidebarRight } = props
+      // Capture the sidebar controller at module scope so the module-level retry
+      // (drainSidebarQueue) can still reach it after THIS booth grid unmounts —
+      // which is exactly what openSession below causes when it navigates the
+      // frame to the session's main window.
+      sidebarRightRef = sidebarRight || sidebarRightRef
+      // Present a file from a booth pane: jump to the session's own main window
+      // (openSession -> native Conversation reoccupies main -> the sidebar adopts
+      // the session) and then open the file there. The open is queued and retried
+      // at module scope until `sidebarRight.mounted` reports the session, because
+      // the adoption is async AND navigating away unmounts this grid (so an
+      // in-pane timer would be torn down before it could fire).
+      const presentInMain = (sessionId, absolutePath) => {
+        if (!sessionId) return
+        // Card's absolute path (preview button title = resolveWorkspacePath(cwd, path)).
+        const byId = sessions.list.getSnapshot().byId || {}
+        const entry = byId[sessionId]
+        const root = entry && entry.cwd ? String(entry.cwd).replace(/\\/g, '/').replace(/\/+$/, '') : ''
+        const norm = String(absolutePath || '').replace(/\\/g, '/')
+        const rel = root && norm.startsWith(root + '/') ? norm.slice(root.length + 1) : norm
+        const address = sessionFileAddress(sessionId, rel)
+        try { uiWorkspace.openSession(sessionId) } catch (e) { /* already on it */ }
+        queueSidebarOpen(sessionId, address)
+      }
 
       const list = sessions.list.getSnapshot()
       const byId = list.byId || {}
@@ -1578,6 +1720,7 @@ window.__ModuleLoader__.load({
           sessionTitles: byId,
           sessionTitleOf,
           onJump: () => uiWorkspace.openSession(id),
+          onPresent: presentInMain,
           // In-place pane switch: clicking a session in the floating title's
           // list swaps THIS window to that session (same grid slot, stays in
           // the booth) instead of jumping to the editor via openSession.
@@ -1727,7 +1870,7 @@ window.__ModuleLoader__.load({
      * instance and only re-renders cells whose props actually changed,
      * instead of rebuilding every wrapper element in the grid.
      */
-    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, onRequestClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, resize }) {
+    const GridItem = React.memo(function GridItem({ id, index, pane, renderPane, onAdd, onRemove, onClearBooth, onRequestClearBooth, switchUnavailable, status, title, pillWidth, workspace, sessionTitles, sessionTitleOf, onJump, onSwitch, onPresent, t, SessionProvider, empty, mounted, placement, dragIndex, dragOver, removing, resize }) {
       return h('div', {
         'data-split-pane': index,
         // Drag feedback comes from dragIndex/dragOver + the capture-phase
@@ -1745,7 +1888,79 @@ window.__ModuleLoader__.load({
       },
         mounted && pane?.ref
           ? h(SessionProvider, { session: pane.ref },
-            h('div', { style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' } },
+            h('div', {
+                  // Capture present/file-card preview clicks BEFORE they reach the
+                  // card's own handler (which calls sidebarRight.openResource and is
+                  // silently dropped inside the booth). Jump to the session's main
+                  // window and expand the sidebar there instead.
+                  onClickCapture: (e) => {
+                    if (typeof e.target.closest !== 'function') return
+                    // Present/file card: jump to the session's main window, then open
+                    // + locate the file in its sidebar (full openChildAside flow).
+                    const pcard = e.target.closest('[data-presented-file]')
+                    if (pcard) {
+                      // NOT '.cardPreview' — that's a CSS-module class, hashed in the
+                      // real DOM (e.g. "K5rwea_cardPreview"). The preview <button> is
+                      // the only element in the card carrying a `title` (the absolute
+                      // resolved path), so select on that instead.
+                      const btn = pcard.querySelector('button[title]')
+                      const abs = btn && btn.getAttribute('title')
+                      if (abs) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        try { console.log('[session-booth] present -> main', id, abs) } catch (err) { }
+                        try { onPresent(id, abs) } catch (err) { }
+                        return
+                      }
+                    }
+                    // Changed-files card: its onClick calls openChangesReview -> the
+                    // SAME sidebarRight.openResource, at changesReviewAddress({seq,turn})
+                    // with {params:{index}}. seq/turn/index live in the card's React
+                    // closure (NOT the DOM), so we can't rebuild them. Instead: patch
+                    // openResource to CAPTURE that exact call, re-dispatch the click so
+                    // the card's own handler hands it to us (the patch swallows the
+                    // "no session surface" throw inside the booth), then jump to main
+                    // and queue the captured address — reproducing the native open.
+                    const ccard = e.target.closest('[data-changed-files]')
+                    if (ccard && !captureReentry && sidebarRightRef && typeof sidebarRightRef.openResource === 'function') {
+                      // PRIMARY: read seq/turn off the card's React fiber (deterministic).
+                      const coords = changesAddressFromFiber(e.target, id)
+                      if (coords && coords.address) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        try { console.log('[session-booth] changes(fiber) -> main', id, coords.address) } catch (err) { }
+                        try { onJump() } catch (err) { }
+                        queueSidebarOpen(id, coords.address, coords.options)
+                        return
+                      }
+                      // FALLBACK: patch openResource + re-dispatch a click so the
+                      // card's own handler hands us its exact call (index included).
+                      const header = e.target.closest('button') || ccard.querySelector('button')
+                      if (header) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        let captured = null
+                        const orig = sidebarRightRef.openResource
+                        try {
+                          sidebarRightRef.openResource = (address, options) => { captured = { address, options } }
+                          captureReentry = true
+                          header.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
+                        } catch (err) { }
+                        finally {
+                          sidebarRightRef.openResource = orig
+                          captureReentry = false
+                        }
+                        if (captured && captured.address) {
+                          try { console.log('[session-booth] changes -> main', id, captured.address) } catch (err) { }
+                          try { onJump() } catch (err) { }
+                          queueSidebarOpen(id, captured.address, captured.options)
+                        }
+                        return
+                      }
+                    }
+                  },
+                  style: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }
+                },
               renderPane(pane.ref, id, {
                 onAdd,
                 onRemove,
@@ -2055,7 +2270,10 @@ window.__ModuleLoader__.load({
     // -------------------------------------------------------------- plugin
 
     return {
-      inject: ['slots', 'layout', 'sessions', 'workspaces', 'uiWorkspace', 'locale'],
+      // `sidebarRight` MUST be declared here: Cordis only exposes injected names
+      // onto `ctx`, so without it `ctx.sidebarRight` is undefined and the
+      // present/changes open-in-sidebar path can never reach the controller.
+      inject: ['slots', 'layout', 'sessions', 'workspaces', 'uiWorkspace', 'locale', 'sidebarRight'],
       apply(ctx) {
         // Register the bilingual dictionaries so `bind` resolves real text
         // instead of the raw key. `ctx.effect` disposes them on teardown.
@@ -2241,6 +2459,7 @@ window.__ModuleLoader__.load({
               wsDisplay,
               SessionProvider,
               uiWorkspace: ctx.uiWorkspace,
+sidebarRight: ctx.sidebarRight,
               renderPane: (ref, sessionId, actions) => {
                 // Inside SessionProvider the scope binding is this pane's
                 // session, so the conversation content factory binds to it.
