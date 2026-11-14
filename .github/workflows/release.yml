@@ -42,6 +42,9 @@ jobs:
         run: |
           mkdir -p ./dist
           npm pack --pack-destination ./dist
+          # 额外产出一份不带版本号的固定名副本，供 releases/latest/download/<repo>.tgz 永久可用
+          # （带版本号的包照常上传，历史版本直链不受影响）
+          cp dist/*.tgz dist/dsh-session-booth.tgz
           echo "Packed bundle:"
           ls -la dist/
 
